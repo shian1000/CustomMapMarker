@@ -7,7 +7,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fakes.dart';
+
 void main() {
+  late FakeMapRepository repo;
+
   Future<MapCamera Function()> pumpMap(
     WidgetTester tester, {
     required int width,
@@ -19,24 +23,20 @@ void main() {
     tester.view.devicePixelRatio = 2.75;
     addTearDown(tester.view.reset);
 
+    final project = testMap(
+      'map',
+      width: width,
+      height: height,
+      tileMaxZoom: tileMaxZoom,
+    );
+    repo = FakeMapRepository([MapSummary(map: project, markerCount: 0)]);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           markersProvider.overrideWith((ref, mapId) => Stream.value(const [])),
+          mapRepositoryProvider.overrideWithValue(repo),
         ],
-        child: MaterialApp(
-          home: MapViewScreen(
-            project: MapProject(
-              id: 'map',
-              name: 'Mapa',
-              imagePath: '/nonexistent.png',
-              widthPx: width,
-              heightPx: height,
-              createdAt: DateTime(2026),
-              tileMaxZoom: tileMaxZoom,
-            ),
-          ),
-        ),
+        child: MaterialApp(home: MapViewScreen(project: project)),
       ),
     );
     await tester.pump();
@@ -114,5 +114,19 @@ void main() {
     expect(layer.tileDimension, 64);
     expect(layer.zoomOffset, 2);
     expect(layer.maxNativeZoom, 4);
+  });
+
+  testWidgets('renames the map from the app bar', (tester) async {
+    await pumpMap(tester, width: 1000, height: 800);
+    expect(find.widgetWithText(AppBar, 'Mapa'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Zmień nazwę'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), 'Temeria');
+    await tester.tap(find.text('Zapisz'));
+    await tester.pumpAndSettle();
+
+    expect(repo.renamed, [('map', 'Temeria')]);
+    expect(find.widgetWithText(AppBar, 'Temeria'), findsOneWidget);
   });
 }

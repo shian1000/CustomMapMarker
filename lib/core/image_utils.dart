@@ -55,6 +55,14 @@ PreparedImage prepareMapImage(String sourcePath, String destDir) {
   );
 }
 
+/// Format of the image at [path] (see [PreparedImage.format]).
+/// Reads the whole file — run it in an isolate.
+String detectImageFormat(String path) {
+  final decoder = _findDisplayableDecoder(File(path).readAsBytesSync());
+  if (decoder == null) throw UnsupportedImageException(path);
+  return _formatName(decoder);
+}
+
 /// Fully decodes [bytes], accepting only formats Flutter can render.
 img.Image decodeDisplayableImage(Uint8List bytes) {
   final decoder = _findDisplayableDecoder(bytes);

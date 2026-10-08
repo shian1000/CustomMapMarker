@@ -134,14 +134,19 @@ class _TileImage extends ImageProvider<_TileImage> {
 
   @override
   ImageStreamCompleter loadImage(_TileImage key, ImageDecoderCallback decode) =>
-      OneFrameImageStreamCompleter(_load(decode));
+      _TileCompleter(_load(decode), path);
 
   Future<ImageInfo> _load(ImageDecoderCallback decode) async {
     final file = File(path);
     if (!await file.exists()) {
       final render = this.render;
       if (render == null) throw StateError('Missing tile $path');
-      await render(path);
+      try {
+        await render(path);
+      } catch (e) {
+        debugPrint('Tile render failed for $path: $e');
+        rethrow;
+      }
     }
     final buffer = await ui.ImmutableBuffer.fromUint8List(
       await file.readAsBytes(),
@@ -160,4 +165,34 @@ class _TileImage extends ImageProvider<_TileImage> {
 
   @override
   String toString() => '_TileImage($path)';
+}
+
+/// Like OneFrameImageStreamCompleter, but tolerates the tile being dropped
+/// (all listeners removed, e.g. after zooming) before a slow render finishes;
+/// OneFrameImageStreamCompleter throws "Stream has been disposed" then.
+/// The rendered file stays on disk, so the next request loads it directly.
+class _TileCompleter extends ImageStreamCompleter {
+  _TileCompleter(Future<ImageInfo> image, String path) {
+    image.then<void>(
+      (info) {
+        try {
+          setImage(info);
+        } on StateError {
+          info.dispose();
+        }
+      },
+      onError: (Object error, StackTrace stack) {
+        try {
+          reportError(
+            context: ErrorDescription('loading map tile $path'),
+            exception: error,
+            stack: stack,
+            silent: true,
+          );
+        } on StateError {
+          // Dropped already; nobody to tell.
+        }
+      },
+    );
+  }
 }

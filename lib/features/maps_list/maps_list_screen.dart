@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/image_utils.dart';
+import '../../core/map_naming.dart';
 import '../../core/plural.dart';
 import '../../data/map_project.dart';
 import '../../data/providers.dart';
@@ -23,33 +24,61 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
 
   Future<void> _import() async {
     setState(() => _importing = true);
-    final progress = ValueNotifier<double?>(null);
-    var dialogShown = false;
     try {
-      final path = await ref.read(imageFilePickerProvider).pick();
-      if (path == null || !mounted) return;
-
-      dialogShown = true;
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => _ImportProgressDialog(progress: progress),
+      final picked = await ref.read(imageFilePickerProvider).pick();
+      if (picked == null || !mounted) return;
+      final name = await showNewMapNameDialog(
+        context,
+        suggestMapName(picked.name, DateTime.now()),
       );
-      final map = await ref
-          .read(mapRepositoryProvider)
-          .importImage(path, onProgress: (p) => progress.value = p);
+      if (name == null || !mounted) return;
 
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      dialogShown = false;
-      _open(map);
+      final map = await _withProgress(
+        title: 'Importowanie mapy',
+        (onProgress) => ref
+            .read(mapRepositoryProvider)
+            .importImage(picked.path, name: name, onProgress: onProgress),
+      );
+      if (mounted) _open(map);
     } on UnsupportedImageException {
       _showMessage('Nie udało się odczytać obrazu. Wybierz plik PNG lub JPG.');
     } catch (e) {
       _showMessage('Import nie powiódł się: $e');
     } finally {
-      if (dialogShown && mounted) Navigator.of(context).pop();
       if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  Future<void> _enableTiling(MapProject map) async {
+    try {
+      await _withProgress(
+        title: 'Poprawianie jakości',
+        (onProgress) => ref
+            .read(mapRepositoryProvider)
+            .enableTiling(map, onProgress: onProgress),
+      );
+      _showMessage('Mapa „${map.name}” korzysta teraz z kafelków');
+    } catch (e) {
+      _showMessage('Nie udało się poprawić jakości: $e');
+    }
+  }
+
+  /// Runs [task] behind a modal progress dialog that closes when it ends.
+  Future<T> _withProgress<T>(
+    Future<T> Function(void Function(double) onProgress) task, {
+    required String title,
+  }) async {
+    final progress = ValueNotifier<double?>(null);
+    final navigator = Navigator.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _ProgressDialog(title: title, progress: progress),
+    );
+    try {
+      return await task((p) => progress.value = p);
+    } finally {
+      navigator.pop();
       progress.dispose();
     }
   }
@@ -104,6 +133,10 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
               onTap: () => _open(summary.map),
               onRename: () => _rename(summary.map),
               onDelete: () => _delete(summary),
+              onEnableTiling:
+                  ref.read(mapRepositoryProvider).canEnableTiling(summary.map)
+                  ? () => _enableTiling(summary.map)
+                  : null,
             );
           },
         ),
@@ -160,7 +193,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-enum _MapMenuAction { rename, delete }
+enum _MapMenuAction { rename, enableTiling, delete }
 
 class _MapCard extends StatelessWidget {
   const _MapCard({
@@ -169,6 +202,7 @@ class _MapCard extends StatelessWidget {
     required this.onTap,
     required this.onRename,
     required this.onDelete,
+    this.onEnableTiling,
   });
 
   /// Decode width for thumbnails; keeps large maps cheap to show in the grid.
@@ -178,6 +212,9 @@ class _MapCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onRename;
   final VoidCallback onDelete;
+
+  /// Offered only for large maps imported before tiling existed.
+  final VoidCallback? onEnableTiling;
 
   @override
   Widget build(BuildContext context) {
@@ -229,17 +266,26 @@ class _MapCard extends StatelessWidget {
                     tooltip: 'Opcje mapy',
                     onSelected: (action) => switch (action) {
                       _MapMenuAction.rename => onRename(),
+                      _MapMenuAction.enableTiling => onEnableTiling?.call(),
                       _MapMenuAction.delete => onDelete(),
                     },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
                         value: _MapMenuAction.rename,
                         child: ListTile(
                           leading: Icon(Icons.edit_outlined),
                           title: Text('Zmień nazwę'),
                         ),
                       ),
-                      PopupMenuItem(
+                      if (onEnableTiling != null)
+                        const PopupMenuItem(
+                          value: _MapMenuAction.enableTiling,
+                          child: ListTile(
+                            leading: Icon(Icons.hd_outlined),
+                            title: Text('Popraw jakość (kafelki)'),
+                          ),
+                        ),
+                      const PopupMenuItem(
                         value: _MapMenuAction.delete,
                         child: ListTile(
                           leading: Icon(Icons.delete_outline),
@@ -258,8 +304,10 @@ class _MapCard extends StatelessWidget {
   }
 }
 
-class _ImportProgressDialog extends StatelessWidget {
-  const _ImportProgressDialog({required this.progress});
+class _ProgressDialog extends StatelessWidget {
+  const _ProgressDialog({required this.title, required this.progress});
+
+  final String title;
 
   /// Null until tiling starts; small maps never report progress.
   final ValueListenable<double?> progress;
@@ -269,7 +317,7 @@ class _ImportProgressDialog extends StatelessWidget {
     return PopScope(
       canPop: false,
       child: AlertDialog(
-        title: const Text('Importowanie mapy'),
+        title: Text(title),
         content: ValueListenableBuilder(
           valueListenable: progress,
           builder: (context, value, _) => Column(

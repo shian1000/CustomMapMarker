@@ -1,11 +1,16 @@
 import 'package:file_picker/file_picker.dart';
 
+typedef PickedImage = ({String path, String name});
+
 class ImageFilePicker {
   const ImageFilePicker();
 
-  /// Lets the user pick an image. Returns its path, or null when cancelled.
-  Future<String?> pick() async {
-    final files = await FilePicker.pickFiles(type: FileType.image);
-    return files.firstOrNull?.path;
+  /// Lets the user pick an image. Returns its local path and original file
+  /// name, or null when cancelled.
+  Future<PickedImage?> pick() async {
+    final file = (await FilePicker.pickFiles(type: FileType.image)).firstOrNull;
+    final path = file?.path;
+    if (file == null || path == null) return null;
+    return (path: path, name: file.name);
   }
 }

@@ -1,6 +1,6 @@
 ---
 name: run-on-physical-phone
-description: 'Build the current code in this repo as a release APK, install it on a connected physical Android phone (USB or wireless debugging — never an emulator), launch the app, and open scrcpy so the user can see and control the phone screen from this computer. Trigger on requests like "uruchom na telefonie", "wrzuć najnowszego builda na telefon", "pokaż mi to na telefonie", "run on phone", "deploy to my phone", or when the user wants to see current code running on real hardware. Do not trigger for emulators (no physical phone involved) or when the user just wants `flutter analyze`/`flutter test` run — this skill always does a real build + install + on-screen launch.'
+description: 'Build the current code in this repo as a release APK (skipped when the existing APK is already current), install it on a connected physical Android phone (USB or wireless debugging — never an emulator), launch the app, and open scrcpy so the user can see and control the phone screen from this computer. Trigger on requests like "uruchom na telefonie", "wrzuć najnowszego builda na telefon", "pokaż mi to na telefonie", "run on phone", "deploy to my phone", or when the user wants to see current code running on real hardware. Do not trigger for emulators (no physical phone involved) or when the user just wants `flutter analyze`/`flutter test` run — this skill always does a real build + install + on-screen launch.'
 ---
 
 # Run on physical phone
@@ -8,7 +8,7 @@ description: 'Build the current code in this repo as a release APK, install it o
 ## What this does, in order
 
 1. Find connected physical phones.
-2. Check there is enough free memory for the build.
+2. Skip the build if the APK is already current; otherwise check there is enough free memory.
 3. Build a release APK and install it (never `flutter run` — see below).
 4. Launch the app on the phone.
 5. Open scrcpy so the user can see and click/type into the phone from this computer.
@@ -37,7 +37,17 @@ If more than one physical device is listed and the skill was invoked with an arg
 (e.g. "pixel", "huawei"), match it against the model/product string. Otherwise ask the user which
 one to target — don't default to picking one silently.
 
-## Step 2 — Check memory before building
+## Step 2 — Skip the build if the APK is current
+
+```bash
+.claude/skills/share-build-tailscale/scripts/check_build_fresh.sh
+```
+
+If it prints `fresh`, the existing release APK already contains the current code: skip the memory
+check and the build, and go straight to the install in Step 3. Otherwise (`missing` or
+`stale: <file>`) continue below. Rebuild anyway if the user asks for it.
+
+## Step 2b — Check memory before building
 
 This machine has only ~7.6 GB of RAM and a release build previously got OOM-killed (exit code 137),
 forcing the user to reboot. Check memory **before** every build:
@@ -111,6 +121,13 @@ Launch it exactly this way (`setsid` + `nohup` + background `&` + `disown` in on
 plain background launch was observed to get reaped as soon as the tool call that started it
 returned. After launching, check the log after a couple seconds to confirm it's actually mirroring
 and not stuck on an error.
+
+**Restarting scrcpy** (e.g. the window is blank): find it by exact process name, never with
+`pgrep -f`/`pkill -f` — a pattern also matches the Bash tool's own command line and kills the
+call (exit code 144). Use `for p in $(pgrep -x scrcpy); do kill "$p"; done`, then launch it again
+as above. A blank window is also what you get while the phone is asleep:
+`adb -s <device-id> shell dumpsys power | grep mWakefulness`; wake it with
+`adb -s <device-id> shell input keyevent KEYCODE_WAKEUP` (unlocking stays with the user).
 
 **Known device quirk:** older/budget phones (observed on a Huawei SNE-LX1, Android 10) can fail
 with `[server] ERROR: Capture/encoding error: android.media.MediaCodec$CodecException` at full

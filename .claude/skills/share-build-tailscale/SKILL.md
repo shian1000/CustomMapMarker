@@ -31,7 +31,7 @@ The script only compares file times. If the user says code changed in a way it c
 
 ## Step 2 — Rebuild
 
-Follow **Step 2 (memory check)** and **Step 3 (build)** of
+Follow **Step 2b (memory check)** and **Step 3 (build)** of
 `.claude/skills/run-on-physical-phone/SKILL.md`, but skip the install. That means: stop leftover
 Gradle daemons, check `free -m` (ask the user before building below 2500 MB available), run
 `flutter build apk --release`, then stop the Gradle daemon with the Studio JBR as `JAVA_HOME`.

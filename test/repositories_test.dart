@@ -11,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 
+import 'fakes.dart';
+
 void main() {
   late AppDatabase db;
   late Directory docs;
@@ -132,36 +134,124 @@ void main() {
     });
   });
 
-  group('on-demand tiling', () {
-    late MapRepository onDemand;
+  group('naming', () {
+    test('uses the given name instead of the file name', () async {
+      final src = File(p.join(docs.path, '1000021497.png'))
+        ..writeAsBytesSync(img.encodePng(img.Image(width: 4, height: 4)));
+      final map = await maps.importImage(src.path, name: 'Temeria');
+      expect(map.name, 'Temeria');
+      expect((await maps.watchMaps().first).single.map.name, 'Temeria');
+    });
+  });
 
-    setUp(
-      () => onDemand = MapRepository(
+  group('enableTiling', () {
+    /// Imports [bytes] with tiling disabled, as maps were before stage 5.
+    Future<MapProject> importUntiled(String name, List<int> bytes) {
+      final src = File(p.join(docs.path, name))..writeAsBytesSync(bytes);
+      return MapRepository(
         db,
         docs,
-        tilingThresholdPx: 300,
-        renderTilesOnDemand: true,
-      ),
-    );
-
-    Future<MapProject> importBig(String name, List<int> bytes) {
-      final src = File(p.join(docs.path, name))..writeAsBytesSync(bytes);
-      return onDemand.importImage(src.path);
+        tilingThresholdPx: 1 << 30,
+      ).importImage(src.path);
     }
 
     final big = img.Image(width: 600, height: 300);
 
-    test('records the pyramid without generating tiles', () async {
+    test('generates tiles for an old large map', () async {
+      final old = await importUntiled('old.png', img.encodePng(big));
+      expect(maps.canEnableTiling(old), isTrue);
+      final progress = <double>[];
+
+      await maps.enableTiling(old, onProgress: progress.add);
+
+      final updated = (await maps.watchMaps().first).single.map;
+      expect(updated.tileMaxZoom, 2);
+      expect(
+        File(p.join(updated.tilesDir, '2', '2', '1')).existsSync(),
+        isTrue,
+      );
+      expect(progress.last, closeTo(1, 1e-9));
+      expect(maps.canEnableTiling(updated), isFalse);
+    });
+
+    test('only records the pyramid when tiles render on demand', () async {
+      final old = await importUntiled('old.jpg', img.encodeJpg(big));
+      final onDemand = MapRepository(
+        db,
+        docs,
+        tilingThresholdPx: 300,
+        nativeTiles: FakeNativeTiles(),
+      );
+      await onDemand.enableTiling(old);
+      final updated = (await maps.watchMaps().first).single.map;
+      expect(updated.tileMaxZoom, 2);
+      expect(Directory(updated.tilesDir).existsSync(), isFalse);
+    });
+
+    test('is not offered for small maps', () async {
+      await importTestMap(); // 40×30
+      final small = (await maps.watchMaps().first).single.map;
+      expect(maps.canEnableTiling(small), isFalse);
+    });
+  });
+
+  group('native tiling', () {
+    late FakeNativeTiles native;
+    late MapRepository withNative;
+
+    setUp(() {
+      native = FakeNativeTiles();
+      withNative = MapRepository(
+        db,
+        docs,
+        tilingThresholdPx: 300,
+        nativeTiles: native,
+      );
+    });
+
+    Future<MapProject> importBig(
+      String name,
+      List<int> bytes, {
+      void Function(double)? onProgress,
+    }) {
+      final src = File(p.join(docs.path, name))..writeAsBytesSync(bytes);
+      return withNative.importImage(src.path, onProgress: onProgress);
+    }
+
+    final big = img.Image(width: 600, height: 300);
+
+    test('leaves JPEG tiles to be rendered on demand', () async {
+      final map = await importBig('big.jpg', img.encodeJpg(big));
+      expect(map.tileMaxZoom, 2);
+      expect(native.generated, isEmpty);
+      expect(Directory(map.tilesDir).existsSync(), isFalse);
+    });
+
+    test('generates all PNG tiles natively at import', () async {
+      final progress = <double>[];
+      final map = await importBig(
+        'big.png',
+        img.encodePng(big),
+        onProgress: progress.add,
+      );
+      expect(map.tileMaxZoom, 2);
+      expect(native.generated, [(map.imagePath, map.tilesDir, 2)]);
+      expect(progress, [1.0]);
+    });
+
+    test('falls back to on-demand tiles when the image is too large', () async {
+      native.tooLarge = true;
       final map = await importBig('big.png', img.encodePng(big));
       expect(map.tileMaxZoom, 2);
       expect(Directory(map.tilesDir).existsSync(), isFalse);
     });
 
     test(
-      'still generates tiles for formats the renderer cannot read',
+      'still generates tiles in Dart for formats the renderer cannot read',
       () async {
         final map = await importBig('big.bmp', img.encodeBmp(big));
         expect(map.tileMaxZoom, 2);
+        expect(native.generated, isEmpty);
         expect(File(p.join(map.tilesDir, '0', '0', '0')).existsSync(), isTrue);
       },
     );

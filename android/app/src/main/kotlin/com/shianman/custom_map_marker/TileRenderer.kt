@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BitmapRegionDecoder
 import android.graphics.Canvas
-import android.graphics.Paint
 import android.graphics.Rect
 import android.os.Build
 import android.os.Handler
@@ -46,7 +45,39 @@ class TileRenderer(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        if (call.method != "renderTile") return result.notImplemented()
+        when (call.method) {
+            "renderTile" -> onRenderTile(call, result)
+            "generateAllTiles" -> onGenerateAllTiles(call, result)
+            else -> result.notImplemented()
+        }
+    }
+
+    private fun onGenerateAllTiles(call: MethodCall, result: MethodChannel.Result) {
+        val imagePath = call.argument<String>("imagePath")!!
+        val tilesDir = call.argument<String>("tilesDir")!!
+        val maxZoom = call.argument<Int>("maxZoom")!!
+        val taskId = call.argument<Int>("taskId")!!
+
+        executor.execute {
+            try {
+                generateAllTiles(imagePath, tilesDir, maxZoom) { progress ->
+                    mainHandler.post {
+                        channel.invokeMethod(
+                            "progress",
+                            mapOf("taskId" to taskId, "value" to progress),
+                        )
+                    }
+                }
+                mainHandler.post { result.success(null) }
+            } catch (e: TooLargeException) {
+                mainHandler.post { result.error("TOO_LARGE", e.message, null) }
+            } catch (e: Throwable) {
+                mainHandler.post { result.error("GENERATE_FAILED", e.toString(), null) }
+            }
+        }
+    }
+
+    private fun onRenderTile(call: MethodCall, result: MethodChannel.Result) {
         val imagePath = call.argument<String>("imagePath")!!
         val outPath = call.argument<String>("outPath")!!
         val zoom = call.argument<Int>("zoom")!!
@@ -82,6 +113,101 @@ class TileRenderer(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler
             BitmapRegionDecoder.newInstance(path, false)
         } ?: throw IllegalArgumentException("Cannot decode $path")
 
+    /**
+     * Decodes the whole image once and writes every tile of the pyramid.
+     *
+     * Needed for PNG/WebP: unlike JPEG, they can't be decoded from the middle,
+     * so [BitmapRegionDecoder] re-reads the image from the top for every tile,
+     * which made on-demand tiles of a 40 MP PNG take tens of seconds.
+     */
+    private fun generateAllTiles(
+        imagePath: String,
+        tilesDir: String,
+        maxZoom: Int,
+        report: (Double) -> Unit,
+    ) {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(imagePath, bounds)
+        val width = bounds.outWidth
+        val height = bounds.outHeight
+        require(width > 0 && height > 0) { "Cannot read $imagePath" }
+
+        // The full-resolution bitmap plus the half-size level made from it.
+        val needed = width.toLong() * height * 4 * 5 / 4
+        val runtime = Runtime.getRuntime()
+        val javaFree = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
+        // Bitmap pixels live in the native heap since Android 8, outside the
+        // Java heap limit; before that they count against it.
+        val budget = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            availableSystemMemory() / 2
+        } else {
+            javaFree
+        }
+        if (needed > budget) throw TooLargeException("Needs $needed bytes, budget $budget")
+
+        var level = BitmapFactory.decodeFile(
+            imagePath,
+            BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 },
+        ) ?: throw IllegalStateException("Cannot decode $imagePath")
+        val opaque = !level.hasAlpha()
+
+        val total = (0..maxZoom).sumOf { z ->
+            val lw = ceilDiv(width, 1 shl (maxZoom - z))
+            val lh = ceilDiv(height, 1 shl (maxZoom - z))
+            ceilDiv(lw, TILE_SIZE) * ceilDiv(lh, TILE_SIZE)
+        }
+        var done = 0
+        var lastReported = -1
+
+        try {
+            for (z in maxZoom downTo 0) {
+                if (z < maxZoom) {
+                    // Same rounding as TilePyramid.levelWidth/levelHeight.
+                    val next = Bitmap.createScaledBitmap(
+                        level,
+                        ceilDiv(level.width, 2),
+                        ceilDiv(level.height, 2),
+                        true,
+                    )
+                    if (next !== level) level.recycle()
+                    level = next
+                }
+                for (x in 0 until ceilDiv(level.width, TILE_SIZE)) {
+                    for (y in 0 until ceilDiv(level.height, TILE_SIZE)) {
+                        val left = x * TILE_SIZE
+                        val top = y * TILE_SIZE
+                        val crop = Bitmap.createBitmap(
+                            level,
+                            left,
+                            top,
+                            min(TILE_SIZE, level.width - left),
+                            min(TILE_SIZE, level.height - top),
+                        )
+                        writeTile(crop, File(tilesDir, "$z/$x/$y"), opaque)
+                        if (crop !== level) crop.recycle()
+
+                        done++
+                        val percent = done * 100 / total
+                        if (percent != lastReported) {
+                            lastReported = percent
+                            report(done.toDouble() / total)
+                        }
+                    }
+                }
+            }
+        } finally {
+            level.recycle()
+        }
+    }
+
+    private fun availableSystemMemory(): Long {
+        // /proc/meminfo needs no Context; MemAvailable is in kB.
+        return File("/proc/meminfo").useLines { lines ->
+            lines.firstOrNull { it.startsWith("MemAvailable:") }
+                ?.split(Regex("\\s+"))?.getOrNull(1)?.toLongOrNull()
+        }?.times(1024) ?: Long.MAX_VALUE
+    }
+
     private fun renderTile(
         imagePath: String,
         outPath: String,
@@ -112,35 +238,52 @@ class TileRenderer(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler
         // decoder may round differently, so draw scaled to exactly this.
         val width = ceil((right - left) / sample.toDouble()).toInt()
         val height = ceil((bottom - top) / sample.toDouble()).toInt()
-        val isFull = width == TILE_SIZE && height == TILE_SIZE
-        val opaque = isFull && !region.hasAlpha()
+        val opaque = !region.hasAlpha()
 
-        val tile = Bitmap.createBitmap(TILE_SIZE, TILE_SIZE, Bitmap.Config.ARGB_8888)
-        Canvas(tile).drawBitmap(
-            region,
-            null,
-            Rect(0, 0, width, height),
-            Paint(Paint.FILTER_BITMAP_FLAG),
-        )
-        region.recycle()
+        val scaled = if (region.width == width && region.height == height) {
+            region
+        } else {
+            Bitmap.createScaledBitmap(region, width, height, true).also { region.recycle() }
+        }
+        writeTile(scaled, File(outPath), opaque)
+        scaled.recycle()
+    }
 
-        // Write to a temp file and rename, so a half-written tile is never read.
-        val out = File(outPath)
+    /**
+     * Writes [content] (at most TILE_SIZE square) as a tile: JPEG when it fills
+     * the whole tile and is [opaque], otherwise PNG padded with transparency.
+     * Writes to a temp file and renames it, so a half-written tile is never read.
+     */
+    private fun writeTile(content: Bitmap, out: File, opaque: Boolean) {
+        val isFull = content.width == TILE_SIZE && content.height == TILE_SIZE
+        val asJpeg = isFull && opaque
+        val tile = if (isFull) {
+            content
+        } else {
+            Bitmap.createBitmap(TILE_SIZE, TILE_SIZE, Bitmap.Config.ARGB_8888).also {
+                Canvas(it).drawBitmap(content, 0f, 0f, null)
+            }
+        }
+
         out.parentFile?.mkdirs()
         val tmp = File(out.parentFile, "${out.name}.tmp-${Thread.currentThread().id}")
         FileOutputStream(tmp).use { stream ->
-            if (opaque) {
+            if (asJpeg) {
                 tile.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)
             } else {
                 tile.compress(Bitmap.CompressFormat.PNG, 100, stream)
             }
         }
-        tile.recycle()
+        if (tile !== content) tile.recycle()
         if (!tmp.renameTo(out)) {
             tmp.delete()
-            throw IllegalStateException("Cannot write $outPath")
+            throw IllegalStateException("Cannot write $out")
         }
     }
+
+    private class TooLargeException(message: String) : Exception(message)
+
+    private fun ceilDiv(a: Int, b: Int) = (a + b - 1) / b
 
     private companion object {
         const val CHANNEL = "custom_map_marker/tiles"

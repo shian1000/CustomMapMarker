@@ -19,7 +19,7 @@ class MapRepository {
     this._db,
     this._documentsDir, {
     this.tilingThresholdPx = defaultTilingThresholdPx,
-    this.renderTilesOnDemand = false,
+    this.nativeTiles,
   });
 
   /// Larger images exceed common GPU texture limits (and get blurry or fail
@@ -30,11 +30,10 @@ class MapRepository {
   final Directory _documentsDir;
   final int tilingThresholdPx;
 
-  /// Whether tiles can be rendered natively while viewing (see
-  /// NativeTileRenderer). If so, importing a large map only records its
-  /// pyramid; otherwise all tiles are generated up front in Dart, which is
-  /// much slower.
-  final bool renderTilesOnDemand;
+  /// Native tile rendering, when the platform has it (see [_prepareTiles]).
+  /// Without it, all tiles are generated up front in Dart, which is much
+  /// slower.
+  final NativeTileRenderer? nativeTiles;
 
   static const _uuid = Uuid();
 
@@ -65,9 +64,11 @@ class MapRepository {
   }
 
   /// Copies the image at [sourcePath] into app storage, tiles it when large,
-  /// and saves it as a map. [onProgress] receives 0..1 while tiling.
+  /// and saves it as a map named [name] (default: the file name).
+  /// [onProgress] receives 0..1 while tiling.
   Future<MapProject> importImage(
     String sourcePath, {
+    String? name,
     void Function(double progress)? onProgress,
   }) async {
     final id = _uuid.v4();
@@ -78,25 +79,20 @@ class MapRepository {
         () => prepareMapImage(sourcePath, dir.path),
       );
 
-      int? tileMaxZoom;
-      if (math.max(image.width, image.height) > tilingThresholdPx) {
-        if (renderTilesOnDemand &&
-            NativeTileRenderer.supportedFormats.contains(image.format)) {
-          tileMaxZoom = TilePyramid(
-            widthPx: image.width,
-            heightPx: image.height,
-          ).maxZoom;
-        } else {
-          tileMaxZoom = await runWithProgress(
-            _tilingTask(image.path, p.join(dir.path, 'tiles')),
-            onProgress: onProgress,
-          );
-        }
-      }
+      final tileMaxZoom =
+          math.max(image.width, image.height) > tilingThresholdPx
+          ? await _prepareTiles(
+              imagePath: image.path,
+              format: image.format,
+              width: image.width,
+              height: image.height,
+              onProgress: onProgress,
+            )
+          : null;
 
       final row = MapRow(
         id: id,
-        name: p.basenameWithoutExtension(sourcePath),
+        name: name ?? p.basenameWithoutExtension(sourcePath),
         imageFile: p.relative(image.path, from: _documentsDir.path),
         widthPx: image.width,
         heightPx: image.height,
@@ -109,6 +105,83 @@ class MapRepository {
       await dir.delete(recursive: true);
       rethrow;
     }
+  }
+
+  /// Whether [map] was imported before tiling existed and is large enough to
+  /// benefit from it (see [enableTiling]).
+  bool canEnableTiling(MapProject map) =>
+      !map.isTiled && math.max(map.widthPx, map.heightPx) > tilingThresholdPx;
+
+  /// Switches a large single-image map to tiles. Markers are unaffected since
+  /// they are stored relative to the image.
+  Future<void> enableTiling(
+    MapProject map, {
+    void Function(double progress)? onProgress,
+  }) async {
+    if (!canEnableTiling(map)) return;
+    final imagePath = map.imagePath;
+    final format = await Isolate.run(() => detectImageFormat(imagePath));
+    final tileMaxZoom = await _prepareTiles(
+      imagePath: imagePath,
+      format: format,
+      width: map.widthPx,
+      height: map.heightPx,
+      onProgress: onProgress,
+    );
+    await (_db.update(_db.maps)..where((m) => m.id.equals(map.id))).write(
+      MapsCompanion(tileMaxZoom: Value(tileMaxZoom)),
+    );
+  }
+
+  /// Returns the pyramid's top zoom, generating tiles now unless they can be
+  /// rendered on demand while viewing:
+  /// - JPEG with native rendering: nothing to do now (fast region decoding);
+  /// - PNG/WebP with native rendering: all tiles natively, from one decode;
+  ///   if the image doesn't fit in memory, fall back to on-demand tiles;
+  /// - anything else: all tiles in Dart.
+  Future<int> _prepareTiles({
+    required String imagePath,
+    required String format,
+    required int width,
+    required int height,
+    void Function(double progress)? onProgress,
+  }) async {
+    final maxZoom = TilePyramid(widthPx: width, heightPx: height).maxZoom;
+    final native = nativeTiles;
+    final tilesDir = p.join(p.dirname(imagePath), 'tiles');
+    try {
+      if (native != null &&
+          NativeTileRenderer.supportedFormats.contains(format)) {
+        if (NativeTileRenderer.onDemandFormats.contains(format)) {
+          return maxZoom;
+        }
+        try {
+          await native.generateAll(
+            imagePath: imagePath,
+            tilesDir: tilesDir,
+            maxZoom: maxZoom,
+            onProgress: onProgress,
+          );
+        } on ImageTooLargeException {
+          // Slow on first view, but works for any size.
+          await _deleteDir(tilesDir);
+        }
+        return maxZoom;
+      }
+      return await runWithProgress(
+        _tilingTask(imagePath, tilesDir),
+        onProgress: onProgress,
+      );
+    } catch (_) {
+      // Don't leave a partial pyramid behind for a later retry to trip over.
+      await _deleteDir(tilesDir);
+      rethrow;
+    }
+  }
+
+  static Future<void> _deleteDir(String path) async {
+    final dir = Directory(path);
+    if (await dir.exists()) await dir.delete(recursive: true);
   }
 
   // Built outside importImage so the closure sent to the isolate captures only

@@ -27,7 +27,9 @@ final mapRepositoryProvider = Provider(
   (ref) => MapRepository(
     ref.watch(databaseProvider),
     ref.watch(documentsDirProvider),
-    renderTilesOnDemand: NativeTileRenderer.isSupported,
+    nativeTiles: NativeTileRenderer.isSupported
+        ? const NativeTileRenderer()
+        : null,
   ),
 );
 

@@ -1,48 +1,38 @@
 import 'package:custom_map_marker/data/map_project.dart';
-import 'package:custom_map_marker/data/map_repository.dart';
+import 'package:custom_map_marker/data/image_file_picker.dart';
 import 'package:custom_map_marker/data/providers.dart';
 import 'package:custom_map_marker/features/maps_list/maps_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _FakeMapRepository implements MapRepository {
-  final renamed = <(String, String)>[];
-  final deleted = <String>[];
-
-  @override
-  Future<void> rename(String id, String name) async => renamed.add((id, name));
-
-  @override
-  Future<void> delete(String id) async => deleted.add(id);
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
+import 'fakes.dart';
 
 MapSummary _summary(String id, String name, int markers) => MapSummary(
-  map: MapProject(
-    id: id,
-    name: name,
-    imagePath: '/nonexistent/$id.png',
-    widthPx: 100,
-    heightPx: 100,
-    createdAt: DateTime(2026),
-  ),
+  map: testMap(id, name: name),
   markerCount: markers,
 );
 
 void main() {
-  late _FakeMapRepository repo;
+  late FakeMapRepository repo;
 
-  setUp(() => repo = _FakeMapRepository());
+  setUp(() => repo = FakeMapRepository());
 
-  Future<void> pumpList(WidgetTester tester, List<MapSummary> maps) => tester
+  Future<void> pumpList(
+    WidgetTester tester,
+    List<MapSummary> maps, {
+    PickedImage? picked,
+  }) => tester
       .pumpWidget(
         ProviderScope(
           overrides: [
             mapsProvider.overrideWith((ref) => Stream.value(maps)),
             mapRepositoryProvider.overrideWithValue(repo),
+            imageFilePickerProvider.overrideWithValue(
+              FakeImageFilePicker(picked),
+            ),
+            // Import opens the map screen, which watches markers.
+            markersProvider.overrideWith((ref, id) => Stream.value(const [])),
           ],
           child: const MaterialApp(home: MapsListScreen()),
         ),
@@ -125,4 +115,77 @@ void main() {
     expect(repo.deleted, ['a']);
     expect(find.text('Usunięto mapę „Temeria”'), findsOneWidget);
   });
+
+  group('import', () {
+    testWidgets('asks for a name, suggesting a date for numeric file names', (
+      tester,
+    ) async {
+      await pumpList(
+        tester,
+        const [],
+        picked: (path: '/cache/1000021497.jpg', name: '1000021497.jpg'),
+      );
+      await tester.tap(find.text('Importuj mapę'));
+      await _settle(tester);
+
+      expect(find.text('Nowa mapa'), findsOneWidget);
+      final field = tester.widget<TextFormField>(find.byType(TextFormField));
+      expect(field.controller!.text, startsWith('Mapa z '));
+
+      await tester.enterText(find.byType(TextFormField), 'Kontynent');
+      await tester.tap(find.widgetWithText(FilledButton, 'Importuj'));
+      await _settle(tester);
+      expect(repo.imported, [('/cache/1000021497.jpg', 'Kontynent')]);
+    });
+
+    testWidgets('keeps a meaningful file name and can be cancelled', (
+      tester,
+    ) async {
+      await pumpList(
+        tester,
+        const [],
+        picked: (path: '/cache/x.jpg', name: 'Swiat_Wiedzmina.jpg'),
+      );
+      await tester.tap(find.text('Importuj mapę'));
+      await _settle(tester);
+      final field = tester.widget<TextFormField>(find.byType(TextFormField));
+      expect(field.controller!.text, 'Swiat_Wiedzmina');
+
+      await tester.tap(find.text('Anuluj'));
+      await _settle(tester);
+      expect(repo.imported, isEmpty);
+    });
+  });
+
+  group('enable tiling', () {
+    testWidgets('is offered only for maps that need it', (tester) async {
+      repo.tileable.add('big');
+      await pumpList(tester, [_summary('big', 'Duża', 0)]);
+      await tester.tap(find.byTooltip('Opcje mapy'));
+      await tester.pumpAndSettle();
+      expect(find.text('Popraw jakość (kafelki)'), findsOneWidget);
+
+      await tester.tap(find.text('Popraw jakość (kafelki)'));
+      await tester.pumpAndSettle();
+      expect(repo.tiled, ['big']);
+      expect(
+        find.text('Mapa „Duża” korzysta teraz z kafelków'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('is hidden for other maps', (tester) async {
+      await pumpList(tester, [_summary('small', 'Mała', 0)]);
+      await tester.tap(find.byTooltip('Opcje mapy'));
+      await tester.pumpAndSettle();
+      expect(find.text('Popraw jakość (kafelki)'), findsNothing);
+    });
+  });
+}
+
+/// Like pumpAndSettle, but tolerates the import button's endless spinner.
+Future<void> _settle(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }

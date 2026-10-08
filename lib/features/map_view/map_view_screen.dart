@@ -16,6 +16,7 @@ import '../../data/marker_repository.dart';
 import '../../data/providers.dart';
 import '../../shared/widgets/marker_pin.dart';
 import '../marker_editor/marker_details_sheet.dart';
+import '../maps_list/map_dialogs.dart';
 import '../marker_editor/marker_editor_sheet.dart';
 import 'local_tile_provider.dart';
 
@@ -66,6 +67,12 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _rename(String currentName) async {
+    final name = await showRenameMapDialog(context, currentName);
+    if (name == null || name == currentName) return;
+    await ref.read(mapRepositoryProvider).rename(widget.project.id, name);
   }
 
   void _zoomBy(double delta) {
@@ -172,12 +179,31 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Live name, so a rename shows up right away.
+    final name =
+        ref
+            .watch(mapsProvider)
+            .value
+            ?.where((s) => s.map.id == widget.project.id)
+            .firstOrNull
+            ?.map
+            .name ??
+        widget.project.name;
     final markers =
         ref.watch(markersProvider(widget.project.id)).value ?? const [];
     final moving = _moving;
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.project.name)),
+      appBar: AppBar(
+        title: Text(name),
+        actions: [
+          IconButton(
+            tooltip: 'Zmień nazwę',
+            onPressed: () => _rename(name),
+            icon: const Icon(Icons.edit_outlined),
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           LayoutBuilder(

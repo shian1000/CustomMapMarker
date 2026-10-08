@@ -4,10 +4,37 @@ import '../../data/map_project.dart';
 
 /// Asks for a new map name. Returns null when cancelled.
 Future<String?> showRenameMapDialog(BuildContext context, String currentName) =>
-    showDialog<String>(
-      context: context,
-      builder: (_) => _RenameMapDialog(currentName: currentName),
+    _showMapNameDialog(
+      context,
+      title: 'Zmień nazwę',
+      initialName: currentName,
+      confirmLabel: 'Zapisz',
     );
+
+/// Asks how to name a map being imported. Returns null when cancelled.
+Future<String?> showNewMapNameDialog(
+  BuildContext context,
+  String suggestedName,
+) => _showMapNameDialog(
+  context,
+  title: 'Nowa mapa',
+  initialName: suggestedName,
+  confirmLabel: 'Importuj',
+);
+
+Future<String?> _showMapNameDialog(
+  BuildContext context, {
+  required String title,
+  required String initialName,
+  required String confirmLabel,
+}) => showDialog<String>(
+  context: context,
+  builder: (_) => _MapNameDialog(
+    title: title,
+    initialName: initialName,
+    confirmLabel: confirmLabel,
+  ),
+);
 
 /// Asks to confirm deleting [summary]. Returns true when confirmed.
 Future<bool> showDeleteMapDialog(
@@ -48,23 +75,29 @@ Future<bool> showDeleteMapDialog(
   return confirmed ?? false;
 }
 
-class _RenameMapDialog extends StatefulWidget {
-  const _RenameMapDialog({required this.currentName});
+class _MapNameDialog extends StatefulWidget {
+  const _MapNameDialog({
+    required this.title,
+    required this.initialName,
+    required this.confirmLabel,
+  });
 
-  final String currentName;
+  final String title;
+  final String initialName;
+  final String confirmLabel;
 
   @override
-  State<_RenameMapDialog> createState() => _RenameMapDialogState();
+  State<_MapNameDialog> createState() => _MapNameDialogState();
 }
 
-class _RenameMapDialogState extends State<_RenameMapDialog> {
+class _MapNameDialogState extends State<_MapNameDialog> {
   static const _maxLength = 60;
 
   final _formKey = GlobalKey<FormState>();
-  late final _name = TextEditingController(text: widget.currentName)
+  late final _name = TextEditingController(text: widget.initialName)
     ..selection = TextSelection(
       baseOffset: 0,
-      extentOffset: widget.currentName.length,
+      extentOffset: widget.initialName.length,
     );
 
   @override
@@ -81,7 +114,7 @@ class _RenameMapDialogState extends State<_RenameMapDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Zmień nazwę'),
+      title: Text(widget.title),
       content: Form(
         key: _formKey,
         child: TextFormField(
@@ -100,7 +133,7 @@ class _RenameMapDialogState extends State<_RenameMapDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Anuluj'),
         ),
-        FilledButton(onPressed: _save, child: const Text('Zapisz')),
+        FilledButton(onPressed: _save, child: Text(widget.confirmLabel)),
       ],
     );
   }
