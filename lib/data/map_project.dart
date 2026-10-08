@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 
 @immutable
 class MapProject {
@@ -9,6 +10,7 @@ class MapProject {
     required this.widthPx,
     required this.heightPx,
     required this.createdAt,
+    this.tileMaxZoom,
   });
 
   final String id;
@@ -19,6 +21,14 @@ class MapProject {
   final int widthPx;
   final int heightPx;
   final DateTime createdAt;
+
+  /// Top level of the tile pyramid, or null for single-image maps.
+  final int? tileMaxZoom;
+
+  bool get isTiled => tileMaxZoom != null;
+
+  /// Directory holding the tile pyramid of a tiled map.
+  String get tilesDir => p.join(p.dirname(imagePath), 'tiles');
 }
 
 /// A map as shown in the maps list.

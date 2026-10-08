@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/native_tile_renderer.dart';
 import 'database.dart';
 import 'image_file_picker.dart';
 import 'map_marker.dart';
@@ -26,6 +27,7 @@ final mapRepositoryProvider = Provider(
   (ref) => MapRepository(
     ref.watch(databaseProvider),
     ref.watch(documentsDirProvider),
+    renderTilesOnDemand: NativeTileRenderer.isSupported,
   ),
 );
 

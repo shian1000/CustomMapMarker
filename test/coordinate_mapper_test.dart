@@ -58,9 +58,26 @@ void main() {
     });
 
     test('native zoom maps one image pixel to one screen pixel', () {
-      const unitsPerPx = 1 / 4000; // longer side spans one map unit
-      final screenPxPerUnit = const CrsSimple().scale(landscape.nativeZoom);
-      expect(screenPxPerUnit * unitsPerPx, closeTo(1, 1e-9));
+      for (final m in [landscape, portrait]) {
+        final b = m.bounds;
+        final screenPxPerUnit = const CrsSimple().scale(m.nativeZoom);
+        expect((b.east - b.west) * screenPxPerUnit, closeTo(m.widthPx, 1e-6));
+        expect(
+          (b.north - b.south) * screenPxPerUnit,
+          closeTo(m.heightPx, 1e-6),
+        );
+      }
+    });
+
+    test('native zoom is the integer top level of the tile pyramid', () {
+      // 4000 px: 256 * 2^4 = 4096 is the first level that fits.
+      expect(landscape.nativeZoom, closeTo(4, 1e-9));
+      // 3000 px: 256 * 2^4 = 4096 as well.
+      expect(portrait.nativeZoom, closeTo(4, 1e-9));
+      expect(
+        MapCoordinateMapper(widthPx: 100, heightPx: 50).nativeZoom,
+        closeTo(0, 1e-9),
+      );
     });
 
     test('fit zoom is native zoom when viewport equals image size', () {

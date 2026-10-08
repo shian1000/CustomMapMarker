@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/coordinate_mapper.dart';
+import '../../core/native_tile_renderer.dart';
+import '../../core/tile_pyramid.dart';
 import '../../data/map_marker.dart';
 import '../../data/map_project.dart';
 import '../../data/marker_repository.dart';
@@ -15,6 +17,7 @@ import '../../data/providers.dart';
 import '../../shared/widgets/marker_pin.dart';
 import '../marker_editor/marker_details_sheet.dart';
 import '../marker_editor/marker_editor_sheet.dart';
+import 'local_tile_provider.dart';
 
 class MapViewScreen extends ConsumerStatefulWidget {
   const MapViewScreen({super.key, required this.project});
@@ -36,6 +39,20 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
     widthPx: widget.project.widthPx,
     heightPx: widget.project.heightPx,
   );
+
+  late final _tileProvider = widget.project.isTiled
+      ? LocalTileProvider(
+          tilesDir: widget.project.tilesDir,
+          imagePath: widget.project.imagePath,
+          pyramid: TilePyramid(
+            widthPx: widget.project.widthPx,
+            heightPx: widget.project.heightPx,
+          ),
+          renderer: NativeTileRenderer.isSupported
+              ? const NativeTileRenderer()
+              : null,
+        )
+      : null;
 
   /// Marker waiting for the user to tap its new position.
   MapMarker? _moving;
@@ -117,6 +134,42 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
     }
   }
 
+  Widget _imageLayer(BuildContext context) {
+    final project = widget.project;
+    final tileMaxZoom = project.tileMaxZoom;
+    if (tileMaxZoom == null) {
+      return OverlayImageLayer(
+        overlayImages: [
+          OverlayImage(
+            bounds: _mapper.bounds,
+            imageProvider: FileImage(File(project.imagePath)),
+          ),
+        ],
+      );
+    }
+    // flutter_map sizes tiles in logical pixels, so on a 2.6× screen a 256 px
+    // tile would be stretched over ~670 physical pixels and look blurry.
+    // Request tiles [levelsUp] levels higher and draw them proportionally
+    // smaller, so tile pixels roughly match physical pixels.
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final levelsUp = min(
+      max((log(pixelRatio) / ln2 - 0.05).ceil(), 0),
+      min(2, tileMaxZoom),
+    );
+    return TileLayer(
+      tileProvider: _tileProvider!,
+      tileBounds: _mapper.bounds,
+      tileDimension: TilePyramid.tileSize >> levelsUp,
+      zoomOffset: levelsUp.toDouble(),
+      minNativeZoom: 0,
+      maxNativeZoom: tileMaxZoom - levelsUp,
+      // TileLayer hides itself below minZoom, which defaults to 0; the
+      // fitted view of a small screen can be slightly below that.
+      minZoom: double.negativeInfinity,
+      tileDisplay: const TileDisplay.instantaneous(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final markers =
@@ -155,16 +208,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                   onTap: _onTap,
                 ),
                 children: [
-                  OverlayImageLayer(
-                    overlayImages: [
-                      OverlayImage(
-                        bounds: _mapper.bounds,
-                        imageProvider: FileImage(
-                          File(widget.project.imagePath),
-                        ),
-                      ),
-                    ],
-                  ),
+                  _imageLayer(context),
                   MarkerLayer(
                     alignment: Alignment.topCenter,
                     markers: [

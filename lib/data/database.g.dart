@@ -70,6 +70,17 @@ class $MapsTable extends Maps with TableInfo<$MapsTable, MapRow> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _tileMaxZoomMeta = const VerificationMeta(
+    'tileMaxZoom',
+  );
+  @override
+  late final GeneratedColumn<int> tileMaxZoom = GeneratedColumn<int>(
+    'tile_max_zoom',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -78,6 +89,7 @@ class $MapsTable extends Maps with TableInfo<$MapsTable, MapRow> {
     widthPx,
     heightPx,
     createdAt,
+    tileMaxZoom,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -136,6 +148,15 @@ class $MapsTable extends Maps with TableInfo<$MapsTable, MapRow> {
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('tile_max_zoom')) {
+      context.handle(
+        _tileMaxZoomMeta,
+        tileMaxZoom.isAcceptableOrUnknown(
+          data['tile_max_zoom']!,
+          _tileMaxZoomMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -169,6 +190,10 @@ class $MapsTable extends Maps with TableInfo<$MapsTable, MapRow> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      tileMaxZoom: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}tile_max_zoom'],
+      ),
     );
   }
 
@@ -188,6 +213,10 @@ class MapRow extends DataClass implements Insertable<MapRow> {
   final int widthPx;
   final int heightPx;
   final DateTime createdAt;
+
+  /// Top zoom level of the tile pyramid in `tiles/` next to the image, or
+  /// null when the map is small enough to be drawn as a single image.
+  final int? tileMaxZoom;
   const MapRow({
     required this.id,
     required this.name,
@@ -195,6 +224,7 @@ class MapRow extends DataClass implements Insertable<MapRow> {
     required this.widthPx,
     required this.heightPx,
     required this.createdAt,
+    this.tileMaxZoom,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -205,6 +235,9 @@ class MapRow extends DataClass implements Insertable<MapRow> {
     map['width_px'] = Variable<int>(widthPx);
     map['height_px'] = Variable<int>(heightPx);
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || tileMaxZoom != null) {
+      map['tile_max_zoom'] = Variable<int>(tileMaxZoom);
+    }
     return map;
   }
 
@@ -216,6 +249,9 @@ class MapRow extends DataClass implements Insertable<MapRow> {
       widthPx: Value(widthPx),
       heightPx: Value(heightPx),
       createdAt: Value(createdAt),
+      tileMaxZoom: tileMaxZoom == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tileMaxZoom),
     );
   }
 
@@ -231,6 +267,7 @@ class MapRow extends DataClass implements Insertable<MapRow> {
       widthPx: serializer.fromJson<int>(json['widthPx']),
       heightPx: serializer.fromJson<int>(json['heightPx']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      tileMaxZoom: serializer.fromJson<int?>(json['tileMaxZoom']),
     );
   }
   @override
@@ -243,6 +280,7 @@ class MapRow extends DataClass implements Insertable<MapRow> {
       'widthPx': serializer.toJson<int>(widthPx),
       'heightPx': serializer.toJson<int>(heightPx),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'tileMaxZoom': serializer.toJson<int?>(tileMaxZoom),
     };
   }
 
@@ -253,6 +291,7 @@ class MapRow extends DataClass implements Insertable<MapRow> {
     int? widthPx,
     int? heightPx,
     DateTime? createdAt,
+    Value<int?> tileMaxZoom = const Value.absent(),
   }) => MapRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -260,6 +299,7 @@ class MapRow extends DataClass implements Insertable<MapRow> {
     widthPx: widthPx ?? this.widthPx,
     heightPx: heightPx ?? this.heightPx,
     createdAt: createdAt ?? this.createdAt,
+    tileMaxZoom: tileMaxZoom.present ? tileMaxZoom.value : this.tileMaxZoom,
   );
   MapRow copyWithCompanion(MapsCompanion data) {
     return MapRow(
@@ -269,6 +309,9 @@ class MapRow extends DataClass implements Insertable<MapRow> {
       widthPx: data.widthPx.present ? data.widthPx.value : this.widthPx,
       heightPx: data.heightPx.present ? data.heightPx.value : this.heightPx,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      tileMaxZoom: data.tileMaxZoom.present
+          ? data.tileMaxZoom.value
+          : this.tileMaxZoom,
     );
   }
 
@@ -280,14 +323,22 @@ class MapRow extends DataClass implements Insertable<MapRow> {
           ..write('imageFile: $imageFile, ')
           ..write('widthPx: $widthPx, ')
           ..write('heightPx: $heightPx, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('tileMaxZoom: $tileMaxZoom')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, imageFile, widthPx, heightPx, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    imageFile,
+    widthPx,
+    heightPx,
+    createdAt,
+    tileMaxZoom,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -297,7 +348,8 @@ class MapRow extends DataClass implements Insertable<MapRow> {
           other.imageFile == this.imageFile &&
           other.widthPx == this.widthPx &&
           other.heightPx == this.heightPx &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.tileMaxZoom == this.tileMaxZoom);
 }
 
 class MapsCompanion extends UpdateCompanion<MapRow> {
@@ -307,6 +359,7 @@ class MapsCompanion extends UpdateCompanion<MapRow> {
   final Value<int> widthPx;
   final Value<int> heightPx;
   final Value<DateTime> createdAt;
+  final Value<int?> tileMaxZoom;
   final Value<int> rowid;
   const MapsCompanion({
     this.id = const Value.absent(),
@@ -315,6 +368,7 @@ class MapsCompanion extends UpdateCompanion<MapRow> {
     this.widthPx = const Value.absent(),
     this.heightPx = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.tileMaxZoom = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MapsCompanion.insert({
@@ -324,6 +378,7 @@ class MapsCompanion extends UpdateCompanion<MapRow> {
     required int widthPx,
     required int heightPx,
     required DateTime createdAt,
+    this.tileMaxZoom = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        name = Value(name),
@@ -338,6 +393,7 @@ class MapsCompanion extends UpdateCompanion<MapRow> {
     Expression<int>? widthPx,
     Expression<int>? heightPx,
     Expression<DateTime>? createdAt,
+    Expression<int>? tileMaxZoom,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -347,6 +403,7 @@ class MapsCompanion extends UpdateCompanion<MapRow> {
       if (widthPx != null) 'width_px': widthPx,
       if (heightPx != null) 'height_px': heightPx,
       if (createdAt != null) 'created_at': createdAt,
+      if (tileMaxZoom != null) 'tile_max_zoom': tileMaxZoom,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -358,6 +415,7 @@ class MapsCompanion extends UpdateCompanion<MapRow> {
     Value<int>? widthPx,
     Value<int>? heightPx,
     Value<DateTime>? createdAt,
+    Value<int?>? tileMaxZoom,
     Value<int>? rowid,
   }) {
     return MapsCompanion(
@@ -367,6 +425,7 @@ class MapsCompanion extends UpdateCompanion<MapRow> {
       widthPx: widthPx ?? this.widthPx,
       heightPx: heightPx ?? this.heightPx,
       createdAt: createdAt ?? this.createdAt,
+      tileMaxZoom: tileMaxZoom ?? this.tileMaxZoom,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -392,6 +451,9 @@ class MapsCompanion extends UpdateCompanion<MapRow> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (tileMaxZoom.present) {
+      map['tile_max_zoom'] = Variable<int>(tileMaxZoom.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -407,6 +469,7 @@ class MapsCompanion extends UpdateCompanion<MapRow> {
           ..write('widthPx: $widthPx, ')
           ..write('heightPx: $heightPx, ')
           ..write('createdAt: $createdAt, ')
+          ..write('tileMaxZoom: $tileMaxZoom, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -954,6 +1017,7 @@ typedef $$MapsTableCreateCompanionBuilder = MapsCompanion Function({
   required int widthPx,
   required int heightPx,
   required DateTime createdAt,
+  Value<int?> tileMaxZoom,
   Value<int> rowid,
 });
 typedef $$MapsTableUpdateCompanionBuilder = MapsCompanion Function({
@@ -963,6 +1027,7 @@ typedef $$MapsTableUpdateCompanionBuilder = MapsCompanion Function({
   Value<int> widthPx,
   Value<int> heightPx,
   Value<DateTime> createdAt,
+  Value<int?> tileMaxZoom,
   Value<int> rowid,
 });
 
@@ -1025,6 +1090,11 @@ class $$MapsTableFilterComposer extends Composer<_$AppDatabase, $MapsTable> {
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get tileMaxZoom => $composableBuilder(
+    column: $table.tileMaxZoom,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1091,6 +1161,11 @@ class $$MapsTableOrderingComposer extends Composer<_$AppDatabase, $MapsTable> {
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get tileMaxZoom => $composableBuilder(
+    column: $table.tileMaxZoom,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MapsTableAnnotationComposer
@@ -1119,6 +1194,11 @@ class $$MapsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get tileMaxZoom => $composableBuilder(
+    column: $table.tileMaxZoom,
+    builder: (column) => column,
+  );
 
   Expression<T> markersRefs<T extends Object>(
     Expression<T> Function($$MarkersTableAnnotationComposer a) f,
@@ -1180,6 +1260,7 @@ class $$MapsTableTableManager
                 Value<int> widthPx = const Value.absent(),
                 Value<int> heightPx = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<int?> tileMaxZoom = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MapsCompanion(
                 id: id,
@@ -1188,6 +1269,7 @@ class $$MapsTableTableManager
                 widthPx: widthPx,
                 heightPx: heightPx,
                 createdAt: createdAt,
+                tileMaxZoom: tileMaxZoom,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -1198,6 +1280,7 @@ class $$MapsTableTableManager
                 required int widthPx,
                 required int heightPx,
                 required DateTime createdAt,
+                Value<int?> tileMaxZoom = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MapsCompanion.insert(
                 id: id,
@@ -1206,6 +1289,7 @@ class $$MapsTableTableManager
                 widthPx: widthPx,
                 heightPx: heightPx,
                 createdAt: createdAt,
+                tileMaxZoom: tileMaxZoom,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

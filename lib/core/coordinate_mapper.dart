@@ -4,19 +4,24 @@ import 'dart:ui';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'tile_pyramid.dart';
+
 /// Translates between image space and the [CrsSimple] map space.
 ///
 /// Positions are stored normalized (0..1 relative to the image), so they stay
-/// valid regardless of image resolution or tiling. The image is laid out in a
-/// box whose longer side spans one map unit, which keeps coordinates inside
-/// valid latitude/longitude ranges and zoom levels in the usual 0..20 range
-/// that flutter_map assumes (e.g. camera fitting clamps zoom at 0).
+/// valid regardless of image resolution or tiling. The image's top-left corner
+/// sits at (0, 0) and its longer side spans at most one map unit, which keeps
+/// zoom levels in the usual 0..20 range that flutter_map assumes (e.g. camera
+/// fitting clamps zoom at 0). The exact span is chosen so that full resolution
+/// lands on an integer zoom, matching the top level of the [TilePyramid].
 class MapCoordinateMapper {
   MapCoordinateMapper({required this.widthPx, required this.heightPx})
     : assert(widthPx > 0 && heightPx > 0),
-      _unitsPerPx = _span / math.max(widthPx, heightPx);
+      _unitsPerPx =
+          1 /
+          (TilePyramid.tileSize <<
+              TilePyramid.topZoomFor(math.max(widthPx, heightPx)));
 
-  static const double _span = 1;
   static const double _top = 0;
 
   final int widthPx;

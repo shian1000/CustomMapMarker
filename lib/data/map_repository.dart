@@ -1,19 +1,40 @@
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../core/image_utils.dart';
+import '../core/isolate_progress.dart';
+import '../core/native_tile_renderer.dart';
+import '../core/tile_generator.dart';
+import '../core/tile_pyramid.dart';
 import 'database.dart';
 import 'map_project.dart';
 
 class MapRepository {
-  MapRepository(this._db, this._documentsDir);
+  MapRepository(
+    this._db,
+    this._documentsDir, {
+    this.tilingThresholdPx = defaultTilingThresholdPx,
+    this.renderTilesOnDemand = false,
+  });
+
+  /// Larger images exceed common GPU texture limits (and get blurry or fail
+  /// to draw as one image), so they are shown as tiles.
+  static const defaultTilingThresholdPx = 4096;
 
   final AppDatabase _db;
   final Directory _documentsDir;
+  final int tilingThresholdPx;
+
+  /// Whether tiles can be rendered natively while viewing (see
+  /// NativeTileRenderer). If so, importing a large map only records its
+  /// pyramid; otherwise all tiles are generated up front in Dart, which is
+  /// much slower.
+  final bool renderTilesOnDemand;
 
   static const _uuid = Uuid();
 
@@ -43,16 +64,36 @@ class MapRepository {
     );
   }
 
-  /// Copies the image at [sourcePath] into app storage and saves it as a map.
-  Future<MapProject> importImage(String sourcePath) async {
+  /// Copies the image at [sourcePath] into app storage, tiles it when large,
+  /// and saves it as a map. [onProgress] receives 0..1 while tiling.
+  Future<MapProject> importImage(
+    String sourcePath, {
+    void Function(double progress)? onProgress,
+  }) async {
     final id = _uuid.v4();
-    final dir = await Directory(p.join(_documentsDir.path, 'maps', id))
-        .create(recursive: true);
+    final dir = await _mapDir(id).create(recursive: true);
 
     try {
       final image = await Isolate.run(
         () => prepareMapImage(sourcePath, dir.path),
       );
+
+      int? tileMaxZoom;
+      if (math.max(image.width, image.height) > tilingThresholdPx) {
+        if (renderTilesOnDemand &&
+            NativeTileRenderer.supportedFormats.contains(image.format)) {
+          tileMaxZoom = TilePyramid(
+            widthPx: image.width,
+            heightPx: image.height,
+          ).maxZoom;
+        } else {
+          tileMaxZoom = await runWithProgress(
+            _tilingTask(image.path, p.join(dir.path, 'tiles')),
+            onProgress: onProgress,
+          );
+        }
+      }
+
       final row = MapRow(
         id: id,
         name: p.basenameWithoutExtension(sourcePath),
@@ -60,6 +101,7 @@ class MapRepository {
         widthPx: image.width,
         heightPx: image.height,
         createdAt: DateTime.now(),
+        tileMaxZoom: tileMaxZoom,
       );
       await _db.into(_db.maps).insert(row);
       return _toProject(row);
@@ -68,6 +110,14 @@ class MapRepository {
       rethrow;
     }
   }
+
+  // Built outside importImage so the closure sent to the isolate captures only
+  // these two strings.
+  static int Function(void Function(double)) _tilingTask(
+    String imagePath,
+    String tilesDir,
+  ) =>
+      (report) => generateTiles(imagePath, tilesDir, report);
 
   Future<void> rename(String id, String name) => (_db.update(
     _db.maps,
@@ -90,5 +140,6 @@ class MapRepository {
     widthPx: row.widthPx,
     heightPx: row.heightPx,
     createdAt: row.createdAt,
+    tileMaxZoom: row.tileMaxZoom,
   );
 }

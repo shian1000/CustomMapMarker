@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:custom_map_marker/data/database.dart';
 import 'package:custom_map_marker/data/map_marker.dart';
+import 'package:custom_map_marker/data/map_project.dart';
 import 'package:custom_map_marker/data/map_repository.dart';
 import 'package:custom_map_marker/data/marker_repository.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -23,7 +24,8 @@ void main() {
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
     docs = Directory.systemTemp.createTempSync('docs');
-    maps = MapRepository(db, docs);
+    // Low threshold so a small test image gets tiled when wanted.
+    maps = MapRepository(db, docs, tilingThresholdPx: 300);
     markers = MarkerRepository(db);
   });
 
@@ -105,6 +107,64 @@ void main() {
       expect(Directory(p.join(docs.path, 'maps', gone)).existsSync(), isFalse);
       expect(Directory(p.join(docs.path, 'maps', keep)).existsSync(), isTrue);
     });
+  });
+
+  group('tiling', () {
+    test('leaves images up to the threshold as a single image', () async {
+      await importTestMap(); // 40×30
+      final map = (await maps.watchMaps().first).single.map;
+      expect(map.isTiled, isFalse);
+      expect(Directory(map.tilesDir).existsSync(), isFalse);
+    });
+
+    test('tiles larger images and reports progress', () async {
+      final src = File(p.join(docs.path, 'Duża.png'))
+        ..writeAsBytesSync(img.encodePng(img.Image(width: 600, height: 300)));
+      final progress = <double>[];
+
+      final map = await maps.importImage(src.path, onProgress: progress.add);
+
+      expect(map.tileMaxZoom, 2);
+      expect(File(p.join(map.tilesDir, '2', '2', '1')).existsSync(), isTrue);
+      expect(progress.last, closeTo(1, 1e-9));
+      final stored = (await maps.watchMaps().first).single.map;
+      expect(stored.tileMaxZoom, 2);
+    });
+  });
+
+  group('on-demand tiling', () {
+    late MapRepository onDemand;
+
+    setUp(
+      () => onDemand = MapRepository(
+        db,
+        docs,
+        tilingThresholdPx: 300,
+        renderTilesOnDemand: true,
+      ),
+    );
+
+    Future<MapProject> importBig(String name, List<int> bytes) {
+      final src = File(p.join(docs.path, name))..writeAsBytesSync(bytes);
+      return onDemand.importImage(src.path);
+    }
+
+    final big = img.Image(width: 600, height: 300);
+
+    test('records the pyramid without generating tiles', () async {
+      final map = await importBig('big.png', img.encodePng(big));
+      expect(map.tileMaxZoom, 2);
+      expect(Directory(map.tilesDir).existsSync(), isFalse);
+    });
+
+    test(
+      'still generates tiles for formats the renderer cannot read',
+      () async {
+        final map = await importBig('big.bmp', img.encodeBmp(big));
+        expect(map.tileMaxZoom, 2);
+        expect(File(p.join(map.tilesDir, '0', '0', '0')).existsSync(), isTrue);
+      },
+    );
   });
 
   group('MarkerRepository', () {

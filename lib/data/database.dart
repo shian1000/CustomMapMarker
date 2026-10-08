@@ -15,6 +15,10 @@ class Maps extends Table {
   IntColumn get heightPx => integer()();
   DateTimeColumn get createdAt => dateTime()();
 
+  /// Top zoom level of the tile pyramid in `tiles/` next to the image, or
+  /// null when the map is small enough to be drawn as a single image.
+  IntColumn get tileMaxZoom => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -46,10 +50,16 @@ class AppDatabase extends _$AppDatabase {
     : super(executor ?? driftDatabase(name: 'custom_map_marker'));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        // Maps imported before tiling existed stay single-image maps.
+        await m.addColumn(maps, maps.tileMaxZoom);
+      }
+    },
     beforeOpen: (details) async {
       // SQLite leaves foreign keys (and so cascading deletes) off by default.
       await customStatement('PRAGMA foreign_keys = ON');

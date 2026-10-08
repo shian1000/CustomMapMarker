@@ -1,3 +1,4 @@
+import 'package:custom_map_marker/core/coordinate_mapper.dart';
 import 'package:custom_map_marker/data/map_project.dart';
 import 'package:custom_map_marker/data/providers.dart';
 import 'package:custom_map_marker/features/map_view/map_view_screen.dart';
@@ -11,6 +12,7 @@ void main() {
     WidgetTester tester, {
     required int width,
     required int height,
+    int? tileMaxZoom,
   }) async {
     // Same logical size as the test phone (1080x2340 @ 2.75).
     tester.view.physicalSize = const Size(1080, 2340);
@@ -31,6 +33,7 @@ void main() {
               widthPx: width,
               heightPx: height,
               createdAt: DateTime(2026),
+              tileMaxZoom: tileMaxZoom,
             ),
           ),
         ),
@@ -40,12 +43,13 @@ void main() {
     return () => MapCamera.of(tester.element(find.byType(MarkerLayer)));
   }
 
-  bool showsWholeImage(MapCamera camera) {
+  bool showsWholeImage(MapCamera camera, int width, int height) {
+    final image = MapCoordinateMapper(widthPx: width, heightPx: height).bounds;
     final visible = camera.visibleBounds;
-    // The image spans one unit along its longer side, from the top-left at
-    // (0, 0) towards east and south.
-    return visible.west <= 0 && visible.east >= 1 ||
-        visible.north >= 0 && visible.south <= -1;
+    return visible.west <= image.west &&
+        visible.east >= image.east &&
+        visible.north >= image.north &&
+        visible.south <= image.south;
   }
 
   for (final (w, h) in [
@@ -57,7 +61,7 @@ void main() {
   ]) {
     testWidgets('initially shows the whole $w×$h image', (tester) async {
       final camera = await pumpMap(tester, width: w, height: h);
-      expect(showsWholeImage(camera()), isTrue);
+      expect(showsWholeImage(camera(), w, h), isTrue);
     });
   }
 
@@ -79,6 +83,36 @@ void main() {
     await tester.tap(find.byTooltip('Pokaż całą mapę'));
     await tester.pump();
     expect(camera().zoom, closeTo(fitted, 1e-9));
-    expect(showsWholeImage(camera()), isTrue);
+    expect(showsWholeImage(camera(), 4000, 3000), isTrue);
+  });
+
+  testWidgets('draws small maps as one image and large maps as tiles', (
+    tester,
+  ) async {
+    await pumpMap(tester, width: 1000, height: 800);
+    expect(find.byType(OverlayImageLayer), findsOneWidget);
+    expect(find.byType(TileLayer), findsNothing);
+
+    final camera = await pumpMap(
+      tester,
+      width: 10000,
+      height: 6000,
+      tileMaxZoom: 6,
+    );
+    expect(find.byType(TileLayer), findsOneWidget);
+    expect(find.byType(OverlayImageLayer), findsNothing);
+    expect(showsWholeImage(camera(), 10000, 6000), isTrue);
+  });
+
+  testWidgets('requests tiles matching physical pixels on dense screens', (
+    tester,
+  ) async {
+    // pumpMap uses a 2.75× screen: tiles come from 2 levels higher and are
+    // drawn at a quarter of the usual size.
+    await pumpMap(tester, width: 10000, height: 6000, tileMaxZoom: 6);
+    final layer = tester.widget<TileLayer>(find.byType(TileLayer));
+    expect(layer.tileDimension, 64);
+    expect(layer.zoomOffset, 2);
+    expect(layer.maxNativeZoom, 4);
   });
 }

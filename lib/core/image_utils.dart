@@ -12,7 +12,8 @@ class UnsupportedImageException implements Exception {
   String toString() => 'Nieobsługiwany format obrazu: $path';
 }
 
-typedef PreparedImage = ({String path, int width, int height});
+/// [format] is one of `jpeg`, `png`, `webp`, `gif`, `bmp`.
+typedef PreparedImage = ({String path, int width, int height, String format});
 
 /// Copies the image at [sourcePath] to [destDir] as `map.<ext>`, baking the
 /// EXIF orientation into the pixels when needed so the stored file and its
@@ -30,7 +31,12 @@ PreparedImage prepareMapImage(String sourcePath, String destDir) {
       final baked = img.bakeOrientation(img.decodeJpg(bytes)!);
       final path = '$destDir/map.jpg';
       File(path).writeAsBytesSync(img.encodeJpg(baked, quality: 95));
-      return (path: path, width: baked.width, height: baked.height);
+      return (
+        path: path,
+        width: baked.width,
+        height: baked.height,
+        format: 'jpeg',
+      );
     }
   }
 
@@ -41,7 +47,22 @@ PreparedImage prepareMapImage(String sourcePath, String destDir) {
       : '';
   final path = '$destDir/map$ext';
   File(path).writeAsBytesSync(bytes);
-  return (path: path, width: info.width, height: info.height);
+  return (
+    path: path,
+    width: info.width,
+    height: info.height,
+    format: _formatName(decoder),
+  );
+}
+
+/// Fully decodes [bytes], accepting only formats Flutter can render.
+img.Image decodeDisplayableImage(Uint8List bytes) {
+  final decoder = _findDisplayableDecoder(bytes);
+  final image = decoder == null
+      ? null
+      : _tryOrNull(() => decoder.decode(bytes));
+  if (image == null) throw const UnsupportedImageException('');
+  return image;
 }
 
 /// Only formats Flutter's image codecs can render.
@@ -67,3 +88,12 @@ T? _tryOrNull<T>(T Function() f) {
     return null;
   }
 }
+
+String _formatName(img.Decoder decoder) => switch (decoder) {
+  img.PngDecoder() => 'png',
+  img.JpegDecoder() => 'jpeg',
+  img.WebPDecoder() => 'webp',
+  img.GifDecoder() => 'gif',
+  img.BmpDecoder() => 'bmp',
+  _ => 'unknown',
+};

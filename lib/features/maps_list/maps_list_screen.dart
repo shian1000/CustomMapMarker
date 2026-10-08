@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,17 +23,34 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
 
   Future<void> _import() async {
     setState(() => _importing = true);
+    final progress = ValueNotifier<double?>(null);
+    var dialogShown = false;
     try {
       final path = await ref.read(imageFilePickerProvider).pick();
-      if (path == null) return;
-      final map = await ref.read(mapRepositoryProvider).importImage(path);
-      if (mounted) _open(map);
+      if (path == null || !mounted) return;
+
+      dialogShown = true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _ImportProgressDialog(progress: progress),
+      );
+      final map = await ref
+          .read(mapRepositoryProvider)
+          .importImage(path, onProgress: (p) => progress.value = p);
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      dialogShown = false;
+      _open(map);
     } on UnsupportedImageException {
       _showMessage('Nie udało się odczytać obrazu. Wybierz plik PNG lub JPG.');
     } catch (e) {
       _showMessage('Import nie powiódł się: $e');
     } finally {
+      if (dialogShown && mounted) Navigator.of(context).pop();
       if (mounted) setState(() => _importing = false);
+      progress.dispose();
     }
   }
 
@@ -234,6 +252,40 @@ class _MapCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ImportProgressDialog extends StatelessWidget {
+  const _ImportProgressDialog({required this.progress});
+
+  /// Null until tiling starts; small maps never report progress.
+  final ValueListenable<double?> progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        title: const Text('Importowanie mapy'),
+        content: ValueListenableBuilder(
+          valueListenable: progress,
+          builder: (context, value, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                value == null
+                    ? 'Przygotowywanie obrazu…'
+                    : 'Duża mapa – dzielenie na kafelki '
+                          '(${(value * 100).floor()}%)…',
+              ),
+              const SizedBox(height: 16),
+              LinearProgressIndicator(value: value),
+            ],
+          ),
         ),
       ),
     );
