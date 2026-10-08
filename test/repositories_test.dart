@@ -44,7 +44,7 @@ void main() {
       final id = await importTestMap();
       final listed = await maps.watchMaps().first;
       expect(listed, hasLength(1));
-      final map = listed.single;
+      final map = listed.single.map;
       expect(
         (map.id, map.name, map.widthPx, map.heightPx),
         (id, 'Mapa świata', 40, 30),
@@ -64,6 +64,46 @@ void main() {
       await expectLater(maps.importImage(src.path), throwsA(anything));
       expect(Directory(p.join(docs.path, 'maps')).listSync(), isEmpty);
       expect(await maps.watchMaps().first, isEmpty);
+    });
+
+    test('lists newest first with marker counts', () async {
+      final older = await importTestMap();
+      // createdAt is stored with one-second precision.
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      final newer = await importTestMap();
+      await markers.add(older, Offset.zero, draft);
+      await markers.add(older, Offset.zero, draft);
+
+      final listed = await maps.watchMaps().first;
+      expect(
+        [for (final s in listed) (s.map.id, s.markerCount)],
+        [(newer, 0), (older, 2)],
+      );
+    });
+
+    test('renames a map', () async {
+      final id = await importTestMap();
+      await maps.rename(id, 'Temeria');
+      expect((await maps.watchMaps().first).single.map.name, 'Temeria');
+    });
+
+    test('deletes a map with its markers and image files', () async {
+      final keep = await importTestMap();
+      final gone = await importTestMap();
+      await markers.add(gone, Offset.zero, draft);
+      final goneImage = (await maps.watchMaps().first)
+          .singleWhere((s) => s.map.id == gone)
+          .map
+          .imagePath;
+
+      await maps.delete(gone);
+
+      final listed = await maps.watchMaps().first;
+      expect([for (final s in listed) s.map.id], [keep]);
+      expect(await markers.watchMarkers(gone).first, isEmpty);
+      expect(File(goneImage).existsSync(), isFalse);
+      expect(Directory(p.join(docs.path, 'maps', gone)).existsSync(), isFalse);
+      expect(Directory(p.join(docs.path, 'maps', keep)).existsSync(), isTrue);
     });
   });
 

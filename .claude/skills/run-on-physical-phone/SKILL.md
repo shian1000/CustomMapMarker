@@ -48,7 +48,7 @@ pgrep -af 'GradleDaemon|KotlinCompileDaemon'
 ```
 
 - Leftover Gradle/Kotlin daemons from earlier builds of this project are ours — stop them first to
-  reclaim their memory: `(cd android && ./gradlew --stop)`.
+  reclaim their memory: `(cd android && JAVA_HOME=/snap/android-studio/current/jbr ./gradlew --stop)`.
 - Then read the `available` column of `free -m`. With the caps below, a release build succeeded
   starting from ~2.7 GB available (plus 4 GB swap); the OOM kill happened with the uncapped
   template settings.
@@ -69,9 +69,14 @@ scrcpy.
 
 ```bash
 flutter build apk --release
-(cd android && ./gradlew --stop)
+(cd android && JAVA_HOME=/snap/android-studio/current/jbr ./gradlew --stop)
 adb -s <device-id> install -r build/app/outputs/flutter-apk/app-release.apk
 ```
+
+`JAVA_HOME` must point at the JDK Flutter builds with (Android Studio's bundled JBR, see
+`flutter doctor -v`): `./gradlew --stop` only stops daemons running on the same JVM, so with the
+system Java it prints nothing useful and leaves the ~2 GB daemon alive. Confirm it reports
+`1 Daemon stopped` (or that `pgrep -af GradleDaemon` is empty afterwards).
 
 Stop the Gradle daemon right after the build: it otherwise keeps ~2 GB resident in the background,
 which is exactly what squeezed the next build out of memory.

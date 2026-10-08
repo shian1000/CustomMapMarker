@@ -33,7 +33,7 @@ final markerRepositoryProvider = Provider(
   (ref) => MarkerRepository(ref.watch(databaseProvider)),
 );
 
-final mapsProvider = StreamProvider<List<MapProject>>(
+final mapsProvider = StreamProvider<List<MapSummary>>(
   (ref) => ref.watch(mapRepositoryProvider).watchMaps(),
 );
 

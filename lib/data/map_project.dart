@@ -20,3 +20,12 @@ class MapProject {
   final int heightPx;
   final DateTime createdAt;
 }
+
+/// A map as shown in the maps list.
+@immutable
+class MapSummary {
+  const MapSummary({required this.map, required this.markerCount});
+
+  final MapProject map;
+  final int markerCount;
+}

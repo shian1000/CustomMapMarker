@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/image_utils.dart';
+import '../../core/plural.dart';
 import '../../data/map_project.dart';
 import '../../data/providers.dart';
 import '../map_view/map_view_screen.dart';
+import 'map_dialogs.dart';
 
 class MapsListScreen extends ConsumerStatefulWidget {
   const MapsListScreen({super.key});
@@ -26,18 +28,31 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
       final map = await ref.read(mapRepositoryProvider).importImage(path);
       if (mounted) _open(map);
     } on UnsupportedImageException {
-      _showError('Nie udało się odczytać obrazu. Wybierz plik PNG lub JPG.');
+      _showMessage('Nie udało się odczytać obrazu. Wybierz plik PNG lub JPG.');
     } catch (e) {
-      _showError('Import nie powiódł się: $e');
+      _showMessage('Import nie powiódł się: $e');
     } finally {
       if (mounted) setState(() => _importing = false);
     }
   }
 
-  void _showError(String message) {
+  Future<void> _rename(MapProject map) async {
+    final name = await showRenameMapDialog(context, map.name);
+    if (name == null || name == map.name) return;
+    await ref.read(mapRepositoryProvider).rename(map.id, name);
+  }
+
+  Future<void> _delete(MapSummary summary) async {
+    if (!await showDeleteMapDialog(context, summary)) return;
+    await ref.read(mapRepositoryProvider).delete(summary.map.id);
+    _showMessage('Usunięto mapę „${summary.map.name}”');
+  }
+
+  void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _open(MapProject map) {
@@ -52,13 +67,27 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Moje mapy')),
       body: switch (maps) {
-        AsyncData(value: []) => const Center(
-          child: Text('Zaimportuj obraz, aby utworzyć mapę.'),
-        ),
-        AsyncData(value: final maps) => ListView.builder(
+        AsyncData(value: []) => const _EmptyState(),
+        AsyncData(value: final maps) => GridView.builder(
+          // Bottom padding keeps the last row clear of the FAB.
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 240,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 0.8,
+          ),
           itemCount: maps.length,
-          itemBuilder: (context, i) =>
-              _MapTile(map: maps[i], onTap: () => _open(maps[i])),
+          itemBuilder: (context, i) {
+            final summary = maps[i];
+            return _MapCard(
+              key: ValueKey(summary.map.id),
+              summary: summary,
+              onTap: () => _open(summary.map),
+              onRename: () => _rename(summary.map),
+              onDelete: () => _delete(summary),
+            );
+          },
         ),
         AsyncError(:final error) => Center(
           child: Text('Nie udało się wczytać map: $error'),
@@ -79,32 +108,134 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
   }
 }
 
-class _MapTile extends StatelessWidget {
-  const _MapTile({required this.map, required this.onTap});
-
-  final MapProject map;
-  final VoidCallback onTap;
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: Image.file(
-          File(map.imagePath),
-          width: 56,
-          height: 56,
-          fit: BoxFit.cover,
-          cacheWidth: 112,
-          errorBuilder: (_, _, _) => const SizedBox.square(
-            dimension: 56,
-            child: Icon(Icons.broken_image_outlined),
-          ),
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.map_outlined,
+              size: 64,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 16),
+            Text('Nie masz jeszcze map', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              'Zaimportuj obraz PNG lub JPG, aby utworzyć mapę.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
       ),
-      title: Text(map.name),
-      subtitle: Text('${map.widthPx} × ${map.heightPx} px'),
-      onTap: onTap,
+    );
+  }
+}
+
+enum _MapMenuAction { rename, delete }
+
+class _MapCard extends StatelessWidget {
+  const _MapCard({
+    super.key,
+    required this.summary,
+    required this.onTap,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  /// Decode width for thumbnails; keeps large maps cheap to show in the grid.
+  static const _thumbnailDecodeWidth = 600;
+
+  final MapSummary summary;
+  final VoidCallback onTap;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final map = summary.map;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Image.file(
+                File(map.imagePath),
+                fit: BoxFit.cover,
+                cacheWidth: _thumbnailDecodeWidth,
+                errorBuilder: (_, _, _) => ColoredBox(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: const Icon(Icons.broken_image_outlined),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 12, top: 4, bottom: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          map.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        Text(
+                          markerCountLabel(summary.markerCount),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton<_MapMenuAction>(
+                    tooltip: 'Opcje mapy',
+                    onSelected: (action) => switch (action) {
+                      _MapMenuAction.rename => onRename(),
+                      _MapMenuAction.delete => onDelete(),
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: _MapMenuAction.rename,
+                        child: ListTile(
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Zmień nazwę'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _MapMenuAction.delete,
+                        child: ListTile(
+                          leading: Icon(Icons.delete_outline),
+                          title: Text('Usuń'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
