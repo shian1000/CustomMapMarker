@@ -1,0 +1,170 @@
+import 'package:flutter/material.dart';
+
+import '../../data/map_marker.dart';
+import '../../shared/marker_colors.dart';
+
+/// Shows a bottom sheet for creating or editing a marker.
+/// Returns null when dismissed without saving.
+Future<MarkerDraft?> showMarkerEditor(
+  BuildContext context, {
+  MarkerDraft? initial,
+}) => showModalBottomSheet<MarkerDraft>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (_) => MarkerEditorSheet(initial: initial),
+);
+
+class MarkerEditorSheet extends StatefulWidget {
+  const MarkerEditorSheet({super.key, this.initial});
+
+  final MarkerDraft? initial;
+
+  @override
+  State<MarkerEditorSheet> createState() => _MarkerEditorSheetState();
+}
+
+class _MarkerEditorSheetState extends State<MarkerEditorSheet> {
+  static const _maxLabelLength = 40;
+
+  final _formKey = GlobalKey<FormState>();
+  late final _label = TextEditingController(text: widget.initial?.label);
+  late final _description = TextEditingController(
+    text: widget.initial?.description,
+  );
+  late int _colorValue =
+      widget.initial?.colorValue ?? markerColors.first.toARGB32();
+
+  bool get _isNew => widget.initial == null;
+
+  @override
+  void dispose() {
+    _label.dispose();
+    _description.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) return;
+    final description = _description.text.trim();
+    Navigator.of(context).pop(
+      MarkerDraft(
+        label: _label.text.trim(),
+        description: description.isEmpty ? null : description,
+        colorValue: _colorValue,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        0,
+        16,
+        16 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              _isNew ? 'Nowy znacznik' : 'Edytuj znacznik',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _label,
+              autofocus: _isNew,
+              maxLength: _maxLabelLength,
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Nazwa',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Podaj nazwę' : null,
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _description,
+              minLines: 1,
+              maxLines: 4,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Opis (opcjonalnie)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Kolor', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final color in markerColors)
+                  _ColorSwatch(
+                    color: color,
+                    selected: color.toARGB32() == _colorValue,
+                    onTap: () => setState(() => _colorValue = color.toARGB32()),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _save,
+              child: Text(_isNew ? 'Dodaj' : 'Zapisz'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ColorSwatch extends StatelessWidget {
+  const _ColorSwatch({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'Kolor',
+      child: InkResponse(
+        onTap: onTap,
+        radius: 24,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Colors.black12,
+              width: selected ? 3 : 1,
+            ),
+          ),
+          child: selected
+              ? Icon(Icons.check, color: onColor(color), size: 20)
+              : null,
+        ),
+      ),
+    );
+  }
+}
