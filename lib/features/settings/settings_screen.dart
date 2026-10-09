@@ -42,6 +42,16 @@ class SettingsScreen extends ConsumerWidget {
           ),
           header('Na mapie'),
           SwitchListTile(
+            title: const Text('Pokaż trasy'),
+            value: settings.showRoutes,
+            onChanged: notifier.setShowRoutes,
+          ),
+          SwitchListTile(
+            title: const Text('Pokaż obszary'),
+            value: settings.showAreas,
+            onChanged: notifier.setShowAreas,
+          ),
+          SwitchListTile(
             title: const Text('Nazwy tras'),
             value: settings.showRouteNames,
             onChanged: notifier.setShowRouteNames,

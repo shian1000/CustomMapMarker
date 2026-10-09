@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/plural.dart';
 import '../../data/legend.dart';
+import '../../data/map_shape.dart';
 import '../../data/providers.dart';
 import '../../shared/marker_colors.dart';
 
@@ -37,11 +38,23 @@ class LegendSheet extends ConsumerWidget {
     final theme = Theme.of(context);
     final legend = ref.watch(legendProvider(mapId)).value ?? const {};
     final markers = ref.watch(markersProvider(mapId)).value ?? const [];
+    final shapes = ref.watch(shapesProvider(mapId)).value ?? const [];
     final repo = ref.read(legendRepositoryProvider);
 
-    final counts = <int, int>{};
+    // Per color: markers, routes and areas using it.
+    final counts = <int, (int, int, int)>{};
+    void count(int color, {int m = 0, int r = 0, int a = 0}) {
+      final (cm, cr, ca) = counts[color] ?? (0, 0, 0);
+      counts[color] = (cm + m, cr + r, ca + a);
+    }
+
     for (final m in markers) {
-      counts.update(m.colorValue, (c) => c + 1, ifAbsent: () => 1);
+      count(m.colorValue, m: 1);
+    }
+    for (final s in shapes) {
+      s.kind == ShapeKind.route
+          ? count(s.colorValue, r: 1)
+          : count(s.colorValue, a: 1);
     }
     // Palette order first, then any other colors markers happen to use.
     final colors = [
@@ -94,7 +107,7 @@ class LegendSheet extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Text(
               'Stuknij kolor, aby nadać mu nazwę. Przełącznikiem pokażesz '
-              'lub ukryjesz jego znaczniki.',
+              'lub ukryjesz wszystko w tym kolorze.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -106,7 +119,9 @@ class LegendSheet extends ConsumerWidget {
               itemCount: colors.length,
               itemBuilder: (context, i) {
                 final colorValue = colors[i];
-                final count = counts[colorValue] ?? 0;
+                final (markerCount, routeCount, areaCount) =
+                    counts[colorValue] ?? (0, 0, 0);
+                final used = markerCount + routeCount + areaCount > 0;
                 final name = legend.nameOf(colorValue);
                 return ListTile(
                   key: ValueKey(colorValue),
@@ -123,11 +138,19 @@ class LegendSheet extends ConsumerWidget {
                           )
                         : null,
                   ),
-                  subtitle: Text(markerCountLabel(count)),
+                  subtitle: Text(
+                    used
+                        ? [
+                            if (markerCount > 0) markerCountLabel(markerCount),
+                            if (routeCount > 0) routeCountLabel(routeCount),
+                            if (areaCount > 0) areaCountLabel(areaCount),
+                          ].join(' · ')
+                        : 'Nieużywany',
+                  ),
                   trailing: Switch(
                     value: !legend.isHidden(colorValue),
                     // Nothing to show or hide for unused colors.
-                    onChanged: count == 0
+                    onChanged: !used
                         ? null
                         : (visible) =>
                               repo.setHidden(mapId, colorValue, !visible),

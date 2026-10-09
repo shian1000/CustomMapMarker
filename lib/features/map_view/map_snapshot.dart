@@ -4,13 +4,17 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 
+import '../../core/coordinate_mapper.dart';
 import '../../core/native_tile_renderer.dart';
 import '../../core/tile_pyramid.dart';
 import '../../data/map_marker.dart';
 import '../../data/map_project.dart';
+import '../../data/map_shape.dart';
 import '../../shared/marker_colors.dart';
 import '../../shared/marker_icons.dart';
+import 'shape_layers.dart';
 
 /// Renders [region] of [project] (normalized, 0..1 of the image) with
 /// [markers] drawn on top, as PNG bytes at most [maxSide] px on the longer
@@ -22,6 +26,9 @@ import '../../shared/marker_icons.dart';
 Future<Uint8List> renderMapSnapshot({
   required MapProject project,
   required List<MapMarker> markers,
+  List<MapShape> shapes = const [],
+  bool showRouteNames = true,
+  bool showAreaNames = true,
   Rect region = const Rect.fromLTWH(0, 0, 1, 1),
   int maxSide = 4096,
   NativeTileRenderer? renderer,
@@ -72,8 +79,41 @@ Future<Uint8List> renderMapSnapshot({
   }
   canvas.restore();
 
-  // Markers in output pixels, sized to the output rather than the screen.
+  // Shapes and markers in output pixels, sized to the output rather than the
+  // screen.
   final pinSize = max(32.0, max(outWidth, outHeight) * 0.025);
+  Offset toOutput(Offset normalized) => Offset(
+    (normalized.dx * width - regionPx.left) * scale,
+    (normalized.dy * height - regionPx.top) * scale,
+  );
+  // On screen a medium line (4 px) is a tenth of a pin (40 px).
+  final strokeScale = pinSize / 40;
+  final mapper = MapCoordinateMapper(
+    widthPx: project.widthPx,
+    heightPx: project.heightPx,
+  );
+  final ordered = [
+    for (final s in shapes)
+      if (s.kind == ShapeKind.area) s,
+    for (final s in shapes)
+      if (s.kind == ShapeKind.route) s,
+  ];
+  for (final shape in ordered) {
+    _drawShape(canvas, shape, toOutput, strokeScale);
+  }
+  for (final shape in ordered) {
+    final name = shape.name;
+    if (name == null) continue;
+    final Offset at;
+    if (shape.kind == ShapeKind.area) {
+      if (!showAreaNames) continue;
+      at = toOutput(_areaLabelPoint(shape, mapper));
+    } else {
+      if (!showRouteNames) continue;
+      at = _midpointAlong([for (final p in shape.points) toOutput(p)]);
+    }
+    _drawShapeName(canvas, name, at, pinSize * 0.35);
+  }
   for (final m in markers) {
     final tip = Offset(
       (m.x * width - regionPx.left) * scale,
@@ -274,3 +314,110 @@ TextPainter _glyph(
   ),
   textDirection: TextDirection.ltr,
 )..layout();
+
+void _drawShape(
+  Canvas canvas,
+  MapShape shape,
+  Offset Function(Offset) toOutput,
+  double strokeScale,
+) {
+  final color = Color(shape.colorValue);
+  final width = strokeWidthOf(shape.style.width) * strokeScale;
+  final points = [for (final p in shape.points) toOutput(p)];
+  final path = Path()..addPolygon(points, shape.kind == ShapeKind.area);
+
+  if (shape.kind == ShapeKind.area) {
+    canvas.drawPath(
+      path,
+      Paint()..color = color.withValues(alpha: shape.style.fillOpacity),
+    );
+  } else {
+    // The same contrasting outline as on screen.
+    _stroke(
+      canvas,
+      path,
+      Paint()
+        ..color = onColor(color).withValues(alpha: 0.7)
+        ..strokeWidth = width + 2 * max(1, width / 3),
+      dashed: shape.style.dashed,
+      dashUnit: width,
+    );
+  }
+  _stroke(
+    canvas,
+    path,
+    Paint()
+      ..color = color
+      ..strokeWidth = width,
+    dashed: shape.style.dashed,
+    dashUnit: width,
+  );
+}
+
+void _stroke(
+  Canvas canvas,
+  Path path,
+  Paint paint, {
+  required bool dashed,
+  required double dashUnit,
+}) {
+  paint
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round;
+  if (!dashed) {
+    canvas.drawPath(path, paint);
+    return;
+  }
+  // Dash 3, gap 2 (in line widths), like on screen.
+  for (final metric in path.computeMetrics()) {
+    for (var d = 0.0; d < metric.length; d += dashUnit * 5) {
+      canvas.drawPath(metric.extractPath(d, d + dashUnit * 3), paint);
+    }
+  }
+}
+
+/// Where flutter_map puts an area's name: the point furthest inside it.
+Offset _areaLabelPoint(MapShape area, MapCoordinateMapper mapper) {
+  final label = const PolygonLabelPlacementCalculator.polylabel(
+    precision: 0.0005,
+  )(Polygon(points: [for (final p in area.points) mapper.toLatLng(p)]));
+  return mapper.toNormalized(label);
+}
+
+Offset _midpointAlong(List<Offset> points) {
+  var total = 0.0;
+  for (var i = 1; i < points.length; i++) {
+    total += (points[i] - points[i - 1]).distance;
+  }
+  var remaining = total / 2;
+  for (var i = 1; i < points.length; i++) {
+    final segment = points[i] - points[i - 1];
+    final length = segment.distance;
+    if (remaining <= length && length > 0) {
+      return points[i - 1] + segment * (remaining / length);
+    }
+    remaining -= length;
+  }
+  return points.last;
+}
+
+/// Dark text with a light halo, like shape names on screen.
+void _drawShapeName(Canvas canvas, String name, Offset center, double size) {
+  final text = TextPainter(
+    text: TextSpan(
+      text: name,
+      style: shapeLabelStyle.copyWith(
+        fontSize: size,
+        shadows: [
+          Shadow(color: Colors.white, blurRadius: size / 5),
+          Shadow(color: Colors.white, blurRadius: size / 2.5),
+        ],
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+    ellipsis: '…',
+  )..layout(maxWidth: size * 20);
+  text.paint(canvas, center - Offset(text.width / 2, text.height / 2));
+}

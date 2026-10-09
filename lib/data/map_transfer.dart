@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:ui';
 
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
@@ -10,8 +11,10 @@ import 'legend.dart';
 import 'legend_repository.dart';
 import 'map_marker.dart';
 import 'map_project.dart';
+import 'map_shape.dart';
 import 'map_repository.dart';
 import 'marker_repository.dart';
+import 'shape_repository.dart';
 
 /// Exports a map with its markers and legend to a `.cmm` file (a ZIP with
 /// `manifest.json` and the image) and imports such files as new maps.
@@ -20,6 +23,7 @@ class MapTransfer {
     required this.maps,
     required this.markers,
     required this.legend,
+    required this.shapes,
     required this.workDir,
   });
 
@@ -27,11 +31,13 @@ class MapTransfer {
   static const _format = 'custom-map-marker';
 
   /// Bump when the manifest changes in a way older versions can't read.
-  static const formatVersion = 1;
+  /// 2: routes and areas ("shapes").
+  static const formatVersion = 2;
 
   final MapRepository maps;
   final MarkerRepository markers;
   final LegendRepository legend;
+  final ShapeRepository shapes;
 
   /// Scratch space for files being exported or imported.
   final Directory workDir;
@@ -43,6 +49,7 @@ class MapTransfer {
   Future<String> export(MapProject map) async {
     final mapMarkers = await markers.watchMarkers(map.id).first;
     final mapLegend = await legend.watchLegend(map.id).first;
+    final mapShapes = await shapes.watchShapes(map.id).first;
     final imageEntry = 'image${p.extension(map.imagePath)}';
 
     final manifest = jsonEncode({
@@ -69,6 +76,22 @@ class MapTransfer {
       'legend': [
         for (final MapEntry(key: color, value: entry) in mapLegend.entries)
           {'colorValue': color, 'name': ?entry.name, 'hidden': entry.hidden},
+      ],
+      'shapes': [
+        for (final s in mapShapes)
+          {
+            'kind': s.kind.name,
+            'name': ?s.name,
+            'description': ?s.style.description,
+            'colorValue': s.colorValue,
+            'width': s.style.width.name,
+            'dashed': s.style.dashed,
+            'fillOpacity': s.style.fillOpacity,
+            'points': [
+              for (final p in s.points) [p.dx, p.dy],
+            ],
+            'createdAt': s.createdAt.toUtc().toIso8601String(),
+          },
       ],
     });
 
@@ -131,6 +154,17 @@ class MapTransfer {
               createdAt: m.createdAt,
             ),
         ]);
+        await shapes.insertAll([
+          for (final s in manifest.shapes)
+            MapShape(
+              id: _uuid.v4(),
+              mapId: map.id,
+              kind: s.kind,
+              points: s.points,
+              style: s.style,
+              createdAt: s.createdAt,
+            ),
+        ]);
         for (final MapEntry(key: color, value: entry)
             in manifest.legend.entries) {
           if (entry.name != null) {
@@ -183,18 +217,30 @@ class _ManifestMarker {
   final DateTime createdAt;
 }
 
+/// A route or area as read from a manifest, before it gets an id.
+class _ManifestShape {
+  const _ManifestShape(this.kind, this.points, this.style, this.createdAt);
+
+  final ShapeKind kind;
+  final List<Offset> points;
+  final ShapeStyle style;
+  final DateTime createdAt;
+}
+
 class _Manifest {
   const _Manifest({
     required this.name,
     required this.imageEntry,
     required this.markers,
     required this.legend,
+    required this.shapes,
   });
 
   final String name;
   final String imageEntry;
   final List<_ManifestMarker> markers;
   final MapLegend legend;
+  final List<_ManifestShape> shapes;
 
   /// Validates and reads a manifest. A file from another app is
   /// [MapArchiveError.notAMapFile], a newer format is
@@ -235,10 +281,62 @@ class _Manifest {
               hidden: (e['hidden'] as bool?) ?? false,
             ),
         },
+        // Absent in version 1 files.
+        shapes: [
+          for (final e in (root['shapes'] ?? const []) as List)
+            _parseShape(e as Map<String, Object?>),
+        ],
       );
     } on TypeError catch (e) {
       throw MapArchiveException(MapArchiveError.damaged, '$e');
     }
+  }
+
+  static _ManifestShape _parseShape(Map<String, Object?> s) {
+    final ShapeKind kind;
+    final ShapeWidth width;
+    try {
+      kind = ShapeKind.values.byName(s['kind']! as String);
+      width = ShapeWidth.values.byName((s['width'] as String?) ?? 'medium');
+    } on ArgumentError catch (e) {
+      throw MapArchiveException(MapArchiveError.damaged, '$e');
+    }
+    final points = [
+      for (final p in s['points']! as List)
+        Offset(
+          _unit(((p as List)[0] as num).toDouble(), 'x'),
+          _unit((p[1] as num).toDouble(), 'y'),
+        ),
+    ];
+    if (points.length < kind.minPoints) {
+      throw MapArchiveException(
+        MapArchiveError.damaged,
+        '${kind.name} with ${points.length} points',
+      );
+    }
+    final opacity = ((s['fillOpacity'] as num?) ?? 0.3).toDouble();
+    return _ManifestShape(
+      kind,
+      points,
+      ShapeStyle(
+        name: s['name'] as String?,
+        description: s['description'] as String?,
+        colorValue: s['colorValue']! as int,
+        width: width,
+        dashed: (s['dashed'] as bool?) ?? false,
+        fillOpacity: _unit(opacity, 'fillOpacity'),
+      ),
+      DateTime.tryParse(s['createdAt'] as String? ?? '')?.toLocal() ??
+          DateTime.now(),
+    );
+  }
+
+  /// [value] if it lies in 0..1; otherwise the file is damaged.
+  static double _unit(double value, String what) {
+    if (value < 0 || value > 1) {
+      throw MapArchiveException(MapArchiveError.damaged, '$what=$value');
+    }
+    return value;
   }
 
   static _ManifestMarker _parseMarker(Map<String, Object?> m) {

@@ -63,7 +63,9 @@ void main() {
             MemorySettingsStore()
               ..setBool('snapToMarkers', settings.snapToMarkers)
               ..setBool('showRouteNames', settings.showRouteNames)
-              ..setBool('showAreaNames', settings.showAreaNames),
+              ..setBool('showAreaNames', settings.showAreaNames)
+              ..setBool('showRoutes', settings.showRoutes)
+              ..setBool('showAreas', settings.showAreas),
           ),
           mapRepositoryProvider.overrideWithValue(repo),
         ],
@@ -183,7 +185,7 @@ void main() {
     );
     final fitted = camera().zoom;
 
-    await tester.tap(find.byTooltip('Lista znaczników'));
+    await tester.tap(find.byTooltip('Lista'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ListTile, 'Kaer Morhen'));
     await tester.pumpAndSettle();
@@ -222,7 +224,7 @@ void main() {
       final badge = tester.widget<Badge>(find.byType(Badge));
       expect(badge.isLabelVisible, isTrue);
 
-      await tester.tap(find.byTooltip('Lista znaczników'));
+      await tester.tap(find.byTooltip('Lista'));
       await tester.pumpAndSettle();
       expect(find.text('1 z 1 · 1 ukryty filtrem'), findsOneWidget);
     });
@@ -678,6 +680,78 @@ void main() {
       await tapMap(tester, screenOf(tester, const Offset(0.5, 0.5)));
       expect(find.text('Trasa: 2 punkty'), findsOneWidget);
       expect(find.text('Zmień punkty'), findsNothing);
+    });
+  });
+
+  group('routes and areas with filters and the list', () {
+    final route = testShape(
+      'r',
+      ShapeKind.route,
+      const [Offset(0.1, 0.1), Offset(0.3, 0.2)],
+      name: 'Szlak',
+      color: 0xFFE53935,
+    );
+    final area = testShape(
+      'a',
+      ShapeKind.area,
+      const [Offset(0.6, 0.6), Offset(0.9, 0.6), Offset(0.8, 0.9)],
+      name: 'Temeria',
+      color: 0xFF1E88E5,
+    );
+
+    testWidgets('the legend filter hides shapes of hidden colors', (
+      tester,
+    ) async {
+      await pumpMap(
+        tester,
+        width: 1000,
+        height: 800,
+        shapes: [route, area],
+        legend: {0xFFE53935: const LegendEntry(hidden: true)},
+      );
+      expect(find.byType(PolylineLayer<String>), findsNothing);
+      expect(find.byType(PolygonLayer<String>), findsOneWidget);
+      expect(tester.widget<Badge>(find.byType(Badge)).isLabelVisible, isTrue);
+    });
+
+    testWidgets('settings can turn routes or areas off everywhere', (
+      tester,
+    ) async {
+      await pumpMap(
+        tester,
+        width: 1000,
+        height: 800,
+        shapes: [route, area],
+        settings: const AppSettings(showAreas: false),
+      );
+      expect(find.byType(PolylineLayer<String>), findsOneWidget);
+      expect(find.byType(PolygonLayer<String>), findsNothing);
+      // Not a filter: no flag on the legend button.
+      expect(tester.widget<Badge>(find.byType(Badge)).isLabelVisible, isFalse);
+    });
+
+    testWidgets('picking an area in the list fits it into view', (
+      tester,
+    ) async {
+      final camera = await pumpMap(
+        tester,
+        width: 1000,
+        height: 800,
+        shapes: [route, area],
+      );
+      final before = camera().zoom;
+      await tester.tap(find.byTooltip('Lista'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Obszary'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ListTile, 'Temeria'));
+      await tester.pumpAndSettle();
+
+      expect(camera().zoom, greaterThan(before));
+      final mapper = MapCoordinateMapper(widthPx: 1000, heightPx: 800);
+      for (final p in area.points) {
+        expect(camera().visibleBounds.contains(mapper.toLatLng(p)), isTrue);
+      }
     });
   });
 }

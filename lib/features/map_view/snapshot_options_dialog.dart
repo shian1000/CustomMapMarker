@@ -56,7 +56,7 @@ class _SnapshotOptionsDialogState extends State<_SnapshotOptionsDialog> {
             CheckboxListTile(
               value: _skipHidden,
               onChanged: (v) => setState(() => _skipHidden = v!),
-              title: const Text('Pomiń znaczniki ukryte filtrem'),
+              title: const Text('Pomiń ukryte filtrem'),
               contentPadding: EdgeInsets.zero,
             ),
         ],

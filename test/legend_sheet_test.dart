@@ -1,4 +1,5 @@
 import 'package:custom_map_marker/data/legend.dart';
+import 'package:custom_map_marker/data/map_shape.dart';
 import 'package:custom_map_marker/data/providers.dart';
 import 'package:custom_map_marker/features/legend/legend_sheet.dart';
 import 'package:custom_map_marker/shared/marker_colors.dart';
@@ -10,6 +11,7 @@ import 'fakes.dart';
 
 final red = markerColors[0].toARGB32();
 final green = markerColors[3].toARGB32();
+final brown = markerColors[9].toARGB32();
 
 void main() {
   late FakeLegendRepository repo;
@@ -17,7 +19,8 @@ void main() {
   setUp(() => repo = FakeLegendRepository());
 
   Future<void> pumpSheet(WidgetTester tester, MapLegend legend) async {
-    tester.view.physicalSize = const Size(1080, 2340);
+    // Tall enough for all twelve colors: the list only builds visible rows.
+    tester.view.physicalSize = const Size(1080, 4400);
     tester.view.devicePixelRatio = 2.75;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
@@ -29,6 +32,20 @@ void main() {
               testMarker('1', 'Wyzima', color: red),
               testMarker('2', 'Novigrad', color: red),
               testMarker('3', 'Las', color: green),
+            ]),
+          ),
+          shapesProvider.overrideWith(
+            (ref, id) => Stream.value([
+              testShape('r', ShapeKind.route, const [
+                Offset.zero,
+                Offset(1, 1),
+              ], color: red),
+              // Brown is used only by an area.
+              testShape('a', ShapeKind.area, const [
+                Offset.zero,
+                Offset(1, 0),
+                Offset(1, 1),
+              ], color: brown),
             ]),
           ),
           legendRepositoryProvider.overrideWithValue(repo),
@@ -48,9 +65,14 @@ void main() {
   ) async {
     await pumpSheet(tester, {red: const LegendEntry(name: 'Miasta')});
     expect(
-      find.descendant(of: row('Miasta'), matching: find.text('2 znaczniki')),
+      find.descendant(
+        of: row('Miasta'),
+        matching: find.text('2 znaczniki · 1 trasa'),
+      ),
       findsOneWidget,
     );
+    expect(find.text('1 obszar'), findsOneWidget);
+    expect(find.text('Nieużywany'), findsWidgets);
     expect(find.text('1 znacznik'), findsOneWidget);
     expect(find.text('Bez nazwy'), findsWidgets);
   });
@@ -67,15 +89,20 @@ void main() {
   testWidgets('unused colors cannot be toggled', (tester) async {
     await pumpSheet(tester, const {});
     final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
-    // Red and green are used; the other ten palette colors are not.
-    expect(switches.where((s) => s.onChanged != null), hasLength(2));
+    // Red and green by markers, brown by an area; nine palette colors are
+    // unused.
+    expect(switches.where((s) => s.onChanged != null), hasLength(3));
   });
 
   testWidgets('"Żadne" hides only the colors in use', (tester) async {
     await pumpSheet(tester, const {});
     await tester.tap(find.text('Żadne'));
     await tester.pump();
-    expect(repo.hidden.toSet(), {('map', red, true), ('map', green, true)});
+    expect(repo.hidden.toSet(), {
+      ('map', red, true),
+      ('map', green, true),
+      ('map', brown, true),
+    });
   });
 
   testWidgets('tapping a color names it', (tester) async {

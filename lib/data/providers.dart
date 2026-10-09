@@ -65,6 +65,7 @@ final mapTransferProvider = Provider(
     maps: ref.watch(mapRepositoryProvider),
     markers: ref.watch(markerRepositoryProvider),
     legend: ref.watch(legendRepositoryProvider),
+    shapes: ref.watch(shapeRepositoryProvider),
     workDir: Directory(
       p.join(ref.watch(documentsDirProvider).path, 'transfer'),
     ),

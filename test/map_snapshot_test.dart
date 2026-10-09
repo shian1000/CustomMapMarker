@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:custom_map_marker/core/tile_generator.dart';
+import 'package:custom_map_marker/data/map_shape.dart';
 import 'package:custom_map_marker/features/map_view/map_snapshot.dart';
 import 'package:custom_map_marker/features/map_view/snapshot_options_dialog.dart';
 import 'package:flutter/material.dart';
@@ -65,6 +66,46 @@ void main() {
       }
       expect(near, greaterThan(100));
       expect(far, 0);
+    });
+  });
+
+  testWidgets('draws routes and areas', (tester) async {
+    await tester.runAsync(() async {
+      final path = writeMap(400, 300);
+      final project = testMap('m', width: 400, height: 300).withImage(path);
+      final bare = decode(
+        await renderMapSnapshot(project: project, markers: const []),
+      );
+      final drawn = decode(
+        await renderMapSnapshot(
+          project: project,
+          markers: const [],
+          showRouteNames: false,
+          showAreaNames: false,
+          shapes: [
+            // A horizontal line across the middle.
+            testShape('r', ShapeKind.route, const [
+              Offset(0.1, 0.5),
+              Offset(0.9, 0.5),
+            ], color: 0xFFFFFFFF),
+            // An area in the top-left corner.
+            testShape('a', ShapeKind.area, const [
+              Offset(0.05, 0.05),
+              Offset(0.3, 0.05),
+              Offset(0.05, 0.3),
+            ], color: 0xFF43A047),
+          ],
+        ),
+      );
+      bool changed(int x, int y) {
+        final a = drawn.getPixel(x, y);
+        final b = bare.getPixel(x, y);
+        return a.r != b.r || a.g != b.g || a.b != b.b;
+      }
+
+      expect(changed(200, 150), isTrue, reason: 'on the route');
+      expect(changed(40, 40), isTrue, reason: 'inside the area');
+      expect(changed(200, 250), isFalse, reason: 'away from both');
     });
   });
 
@@ -173,7 +214,7 @@ void main() {
     ) async {
       final result = await open(tester, filterActive: true);
       await tester.tap(find.text('Widoczny fragment'));
-      await tester.tap(find.text('Pomiń znaczniki ukryte filtrem'));
+      await tester.tap(find.text('Pomiń ukryte filtrem'));
       await tester.pump();
       await tester.tap(find.text('Zapisz'));
       await tester.pumpAndSettle();

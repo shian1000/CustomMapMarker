@@ -10,7 +10,9 @@ import 'package:custom_map_marker/data/map_marker.dart';
 import 'package:custom_map_marker/data/map_project.dart';
 import 'package:custom_map_marker/data/map_repository.dart';
 import 'package:custom_map_marker/data/map_transfer.dart';
+import 'package:custom_map_marker/data/map_shape.dart';
 import 'package:custom_map_marker/data/marker_repository.dart';
+import 'package:custom_map_marker/data/shape_repository.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +25,7 @@ void main() {
   late MapRepository maps;
   late MarkerRepository markers;
   late LegendRepository legend;
+  late ShapeRepository shapes;
   late MapTransfer transfer;
 
   setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
@@ -33,10 +36,12 @@ void main() {
     maps = MapRepository(db, docs);
     markers = MarkerRepository(db);
     legend = LegendRepository(db);
+    shapes = ShapeRepository(db);
     transfer = MapTransfer(
       maps: maps,
       markers: markers,
       legend: legend,
+      shapes: shapes,
       workDir: Directory(p.join(docs.path, 'transfer')),
     );
   });
@@ -67,6 +72,23 @@ void main() {
     );
     await legend.setName(map.id, 0xFFE53935, 'Miasta');
     await legend.setHidden(map.id, 0xFF43A047, true);
+    await shapes.add(
+      map.id,
+      ShapeKind.area,
+      const [Offset(0.1, 0.1), Offset(0.5, 0.1), Offset(0.3, 0.6)],
+      const ShapeStyle(
+        name: 'Temeria',
+        description: 'Królestwo',
+        colorValue: 0xFF1E88E5,
+        width: ShapeWidth.thick,
+        dashed: true,
+        fillOpacity: 0.45,
+      ),
+    );
+    await shapes.add(map.id, ShapeKind.route, const [
+      Offset(0.2, 0.2),
+      Offset(0.9, 0.9),
+    ], const ShapeStyle(colorValue: 0xFFE53935));
     return map;
   }
 
@@ -128,6 +150,31 @@ void main() {
         .map((m) => m.id)
         .toSet();
     expect(copied.map((m) => m.id).toSet().intersection(originalIds), isEmpty);
+
+    final copiedShapes = await shapes.watchShapes(copy.id).first;
+    expect(copiedShapes, hasLength(2));
+    final area = copiedShapes.singleWhere((s) => s.kind == ShapeKind.area);
+    expect(area.points, const [
+      Offset(0.1, 0.1),
+      Offset(0.5, 0.1),
+      Offset(0.3, 0.6),
+    ]);
+    expect(
+      (
+        area.name,
+        area.style.description,
+        area.style.width,
+        area.style.dashed,
+        area.style.fillOpacity,
+      ),
+      ('Temeria', 'Królestwo', ShapeWidth.thick, true, 0.45),
+    );
+    final route = copiedShapes.singleWhere((s) => s.kind == ShapeKind.route);
+    expect((route.name, route.points.length), (null, 2));
+    final originalShapeIds = (await shapes.watchShapes(original.id).first)
+        .map((s) => s.id)
+        .toSet();
+    expect(originalShapeIds.intersection({area.id, route.id}), isEmpty);
 
     final copiedLegend = await legend.watchLegend(copy.id).first;
     expect(copiedLegend.nameOf(0xFFE53935), 'Miasta');
@@ -223,5 +270,72 @@ void main() {
       'a_b_c_d_e_f_g_h_i_j',
     );
     expect(MapTransfer.safeFileName('   '), 'mapa');
+  });
+
+  test('still imports version 1 files, which have no shapes', () async {
+    final path = writeZip({
+      'manifest.json': manifest({
+        'markers': [
+          {'label': 'Wyzima', 'x': 0.5, 'y': 0.5, 'colorValue': 1},
+        ],
+      }),
+      'image.png': pngBytes,
+    });
+    final map = await transfer.import(path);
+    expect(await markers.watchMarkers(map.id).first, hasLength(1));
+    expect(await shapes.watchShapes(map.id).first, isEmpty);
+  });
+
+  test('rejects broken shapes and files from version 3 on', () async {
+    Future<MapArchiveError?> withShape(Map<String, Object?> shape) =>
+        importError(
+          writeZip({
+            'manifest.json': manifest({
+              'version': 2,
+              'shapes': [shape],
+            }),
+            'image.png': pngBytes,
+          }),
+        );
+    expect(
+      await withShape({
+        'kind': 'circle',
+        'colorValue': 1,
+        'points': [
+          [0, 0],
+          [1, 1],
+        ],
+      }),
+      MapArchiveError.damaged,
+    );
+    expect(
+      await withShape({
+        'kind': 'area',
+        'colorValue': 1,
+        'points': [
+          [0, 0],
+          [1, 1],
+        ],
+      }),
+      MapArchiveError.damaged,
+    );
+    expect(
+      await withShape({
+        'kind': 'route',
+        'colorValue': 1,
+        'points': [
+          [0, 0],
+          [1.5, 1],
+        ],
+      }),
+      MapArchiveError.damaged,
+    );
+    expect(await maps.watchMaps().first, isEmpty);
+
+    final newer = writeZip({
+      'manifest.json': manifest({'version': 3}),
+      'image.png': pngBytes,
+    });
+    expect(await importError(newer), MapArchiveError.newerVersion);
   });
 }

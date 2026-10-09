@@ -69,6 +69,10 @@ class ShapeRepository {
   Future<void> remove(String id) =>
       (_db.delete(_db.shapes)..where((s) => s.id.equals(id))).go();
 
+  /// Saves many [shapes] as they are, in one batch (e.g. an imported map).
+  Future<void> insertAll(Iterable<MapShape> shapes) =>
+      _db.batch((batch) => batch.insertAll(_db.shapes, shapes.map(_toRow)));
+
   /// Saves [shape] as is, e.g. to undo its removal.
   Future<void> restore(MapShape shape) =>
       _db.into(_db.shapes).insert(_toRow(shape));

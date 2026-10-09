@@ -139,15 +139,25 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
     await ref.read(mapRepositoryProvider).rename(widget.project.id, name);
   }
 
-  Future<void> _openMarkerList(
-    List<MapMarker> markers, {
-    required int hiddenByFilter,
+  Future<void> _openList({
+    required List<MapMarker> markers,
+    required List<MapShape> shapes,
+    required HiddenCounts hidden,
+    required Set<ShapeKind> kindsOff,
   }) async {
-    final marker = await showMarkerList(
+    final pick = await showMapList(
       context,
-      markers,
-      hiddenByFilter: hiddenByFilter,
+      markers: markers,
+      shapes: shapes,
+      hidden: hidden,
+      kindsOff: kindsOff,
     );
+    if (!mounted) return;
+    final marker = switch (pick) {
+      MarkerPick(:final marker) => marker,
+      ShapePick(:final shape) => await _flyToShape(shape),
+      null => null,
+    };
     if (marker == null || !mounted) return;
     await _flyTo(_mapper.toLatLng(Offset(marker.x, marker.y)));
     if (!mounted) return;
@@ -196,6 +206,18 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
 
   static double _lerp(double a, double b, double t) => a + (b - a) * t;
 
+  /// Flies so the whole of [shape] is in view. Returns null, so it can stand
+  /// in where a marker to emphasize is expected.
+  Future<MapMarker?> _flyToShape(MapShape shape) async {
+    final fitted = CameraFit.coordinates(
+      coordinates: [for (final p in shape.points) _mapper.toLatLng(p)],
+      padding: const EdgeInsets.all(48),
+      maxZoom: _mapper.nativeZoom,
+    ).fit(_controller.camera);
+    await _flyTo(fitted.center, zoom: fitted.zoom);
+    return null;
+  }
+
   MapLegend get _legend =>
       ref.read(legendProvider(widget.project.id)).value ?? const {};
 
@@ -219,10 +241,14 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
     String name, {
     required List<MapMarker> allMarkers,
     required List<MapMarker> visibleMarkers,
+    required List<MapShape> allShapes,
+    required List<MapShape> visibleShapes,
   }) async {
     final options = await showSnapshotOptionsDialog(
       context,
-      filterActive: visibleMarkers.length < allMarkers.length,
+      filterActive:
+          visibleMarkers.length < allMarkers.length ||
+          visibleShapes.length < allShapes.length,
     );
     if (options == null || !mounted) return;
 
@@ -253,6 +279,9 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
         final png = await renderMapSnapshot(
           project: widget.project,
           markers: options.skipHidden ? visibleMarkers : allMarkers,
+          shapes: options.skipHidden ? visibleShapes : allShapes,
+          showRouteNames: ref.read(settingsProvider).showRouteNames,
+          showAreaNames: ref.read(settingsProvider).showAreaNames,
           region: region,
           renderer: NativeTileRenderer.isSupported
               ? const NativeTileRenderer()
@@ -741,12 +770,33 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
       for (final m in allMarkers)
         if (!legend.isHidden(m.colorValue)) m,
     ];
-    final hiddenByFilter = allMarkers.length - markers.length;
+    final hiddenMarkers = allMarkers.length - markers.length;
     final moving = _moving;
     final drawingKind = _drawingKind;
-    final shapes =
-        ref.watch(shapesProvider(widget.project.id)).value ?? const [];
     final settings = ref.watch(settingsProvider);
+    final kindsOff = {
+      if (!settings.showRoutes) ShapeKind.route,
+      if (!settings.showAreas) ShapeKind.area,
+    };
+    final allShapes =
+        ref.watch(shapesProvider(widget.project.id)).value ?? const [];
+    final unfiltered = [
+      for (final s in allShapes)
+        if (!kindsOff.contains(s.kind)) s,
+    ];
+    final shapes = [
+      for (final s in unfiltered)
+        if (!legend.isHidden(s.colorValue)) s,
+    ];
+    int hiddenShapes(ShapeKind kind) =>
+        unfiltered.where((s) => s.kind == kind).length -
+        shapes.where((s) => s.kind == kind).length;
+    final hidden = (
+      markers: hiddenMarkers,
+      routes: hiddenShapes(ShapeKind.route),
+      areas: hiddenShapes(ShapeKind.area),
+    );
+    final hiddenByFilter = hidden.markers + hidden.routes + hidden.areas;
     final editingShape = _editingShape;
     _visibleMarkers = markers;
     _shapes = shapes;
@@ -774,10 +824,14 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
               ),
             ),
             IconButton(
-              tooltip: 'Lista znaczników',
+              tooltip: 'Lista',
               onPressed: !_inMode
-                  ? () =>
-                        _openMarkerList(markers, hiddenByFilter: hiddenByFilter)
+                  ? () => _openList(
+                      markers: markers,
+                      shapes: shapes,
+                      hidden: hidden,
+                      kindsOff: kindsOff,
+                    )
                   : null,
               icon: const Icon(Icons.format_list_bulleted),
             ),
@@ -789,6 +843,9 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
                   name,
                   allMarkers: allMarkers,
                   visibleMarkers: markers,
+                  // Kinds turned off in the settings stay off in the image.
+                  allShapes: unfiltered,
+                  visibleShapes: shapes,
                 ),
                 _MapAction.settings => openSettings(context),
               },

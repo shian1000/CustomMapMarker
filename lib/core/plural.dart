@@ -12,3 +12,9 @@ String pluralPl(int count, String one, String few, String many) {
 
 String markerCountLabel(int count) =>
     '$count ${pluralPl(count, 'znacznik', 'znaczniki', 'znaczników')}';
+
+String routeCountLabel(int count) =>
+    '$count ${pluralPl(count, 'trasa', 'trasy', 'tras')}';
+
+String areaCountLabel(int count) =>
+    '$count ${pluralPl(count, 'obszar', 'obszary', 'obszarów')}';

@@ -9,6 +9,8 @@ class AppSettings {
     this.snapToMarkers = true,
     this.showRouteNames = true,
     this.showAreaNames = true,
+    this.showRoutes = true,
+    this.showAreas = true,
   });
 
   /// While drawing a route or area, a tap near a marker puts the point
@@ -17,14 +19,22 @@ class AppSettings {
   final bool showRouteNames;
   final bool showAreaNames;
 
+  /// Whether routes and areas are drawn at all (on every map).
+  final bool showRoutes;
+  final bool showAreas;
+
   AppSettings copyWith({
     bool? snapToMarkers,
     bool? showRouteNames,
     bool? showAreaNames,
+    bool? showRoutes,
+    bool? showAreas,
   }) => AppSettings(
     snapToMarkers: snapToMarkers ?? this.snapToMarkers,
     showRouteNames: showRouteNames ?? this.showRouteNames,
     showAreaNames: showAreaNames ?? this.showAreaNames,
+    showRoutes: showRoutes ?? this.showRoutes,
+    showAreas: showAreas ?? this.showAreas,
   );
 }
 
@@ -55,6 +65,8 @@ class PrefsSettingsStore implements SettingsStore {
     SettingsNotifier._snapKey,
     SettingsNotifier._routeNamesKey,
     SettingsNotifier._areaNamesKey,
+    SettingsNotifier._routesKey,
+    SettingsNotifier._areasKey,
   };
 
   /// Loads stored settings once, so screens never show defaults first.
@@ -83,6 +95,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _snapKey = 'snapToMarkers';
   static const _routeNamesKey = 'showRouteNames';
   static const _areaNamesKey = 'showAreaNames';
+  static const _routesKey = 'showRoutes';
+  static const _areasKey = 'showAreas';
 
   SettingsStore get _store => ref.read(settingsStoreProvider);
 
@@ -94,6 +108,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       snapToMarkers: store.getBool(_snapKey) ?? defaults.snapToMarkers,
       showRouteNames: store.getBool(_routeNamesKey) ?? defaults.showRouteNames,
       showAreaNames: store.getBool(_areaNamesKey) ?? defaults.showAreaNames,
+      showRoutes: store.getBool(_routesKey) ?? defaults.showRoutes,
+      showAreas: store.getBool(_areasKey) ?? defaults.showAreas,
     );
   }
 
@@ -110,5 +126,15 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setShowAreaNames(bool value) {
     state = state.copyWith(showAreaNames: value);
     return _store.setBool(_areaNamesKey, value);
+  }
+
+  Future<void> setShowRoutes(bool value) {
+    state = state.copyWith(showRoutes: value);
+    return _store.setBool(_routesKey, value);
+  }
+
+  Future<void> setShowAreas(bool value) {
+    state = state.copyWith(showAreas: value);
+    return _store.setBool(_areasKey, value);
   }
 }

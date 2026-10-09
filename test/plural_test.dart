@@ -19,4 +19,19 @@ void main() {
     };
     cases.forEach((count, label) => expect(markerCountLabel(count), label));
   });
+
+  test('Polish plural forms of routes and areas', () {
+    expect(
+      [
+        for (final n in [1, 2, 5, 22]) routeCountLabel(n),
+      ],
+      ['1 trasa', '2 trasy', '5 tras', '22 trasy'],
+    );
+    expect(
+      [
+        for (final n in [1, 3, 12, 24]) areaCountLabel(n),
+      ],
+      ['1 obszar', '3 obszary', '12 obszarów', '24 obszary'],
+    );
+  });
 }
