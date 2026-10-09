@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/plural.dart';
 import '../../core/text_search.dart';
 import '../../data/map_marker.dart';
+import '../../shared/marker_icons.dart';
+import '../../shared/widgets/marker_pin.dart';
 
 enum MarkerSort { alphabetical, newest }
 
@@ -161,9 +163,10 @@ class _MarkerListSheetState extends State<MarkerListSheet> {
                       final description = marker.description;
                       return ListTile(
                         key: ValueKey(marker.id),
-                        leading: Icon(
-                          Icons.location_on,
+                        leading: PinGlyph(
                           color: Color(marker.colorValue),
+                          icon: markerIconFor(marker.icon)?.icon,
+                          size: 32,
                         ),
                         title: Text(marker.label),
                         subtitle: description == null

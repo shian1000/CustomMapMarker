@@ -16,6 +16,7 @@ import '../../data/map_marker.dart';
 import '../../data/map_project.dart';
 import '../../data/marker_repository.dart';
 import '../../data/providers.dart';
+import '../../shared/marker_icons.dart';
 import '../../shared/widgets/marker_pin.dart';
 import '../marker_editor/marker_details_sheet.dart';
 import '../legend/legend_sheet.dart';
@@ -222,6 +223,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
             label: marker.label,
             description: marker.description,
             colorValue: marker.colorValue,
+            icon: marker.icon,
           ),
         );
         if (draft == null) return;
@@ -376,6 +378,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
                           child: MarkerPin(
                             label: m.label,
                             color: Color(m.colorValue),
+                            icon: markerIconFor(m.icon)?.icon,
                             highlighted:
                                 m.id == moving?.id || m.id == _focusedId,
                             emphasized: m.id == _focusedId,

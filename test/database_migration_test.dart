@@ -38,11 +38,12 @@ void main() {
         ('Wiedźmin', 5000, null),
       );
       final marker = await db.select(db.markers).getSingle();
+      expect(marker.icon, isNull);
       expect(
         (marker.label, marker.x, marker.colorValue),
         ('Novigrad', 0.5, 4293212469),
       );
-      expect(raw.userVersion, 3);
+      expect(raw.userVersion, 4);
       await db
           .into(db.legend)
           .insert(
@@ -81,6 +82,6 @@ void main() {
 
     expect((await db.select(db.maps).getSingle()).tileMaxZoom, 5);
     expect(await db.select(db.legend).get(), isEmpty);
-    expect(raw.userVersion, 3);
+    expect(raw.userVersion, 4);
   });
 }

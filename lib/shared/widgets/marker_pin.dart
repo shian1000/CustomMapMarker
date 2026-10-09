@@ -11,6 +11,7 @@ class MarkerPin extends StatelessWidget {
     required this.color,
     this.highlighted = false,
     this.emphasized = false,
+    this.icon,
     this.onTap,
   });
 
@@ -27,6 +28,9 @@ class MarkerPin extends StatelessWidget {
 
   /// Briefly enlarges the pin, e.g. after flying to it from the marker list.
   final bool emphasized;
+
+  /// Drawn inside the pin's head; null for the plain pin.
+  final IconData? icon;
   final VoidCallback? onTap;
 
   @override
@@ -71,10 +75,10 @@ class MarkerPin extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 bubble,
-                Icon(
-                  Icons.location_on,
-                  size: _iconSize,
+                PinGlyph(
                   color: color,
+                  icon: icon,
+                  size: _iconSize,
                   shadows: [
                     Shadow(
                       blurRadius: highlighted ? 6 : 3,
@@ -86,6 +90,62 @@ class MarkerPin extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The pin shape alone, optionally with [icon] in its round head. Also used
+/// at small sizes in lists.
+class PinGlyph extends StatelessWidget {
+  const PinGlyph({
+    super.key,
+    required this.color,
+    this.icon,
+    this.size = 24,
+    this.shadows,
+  });
+
+  final Color color;
+  final IconData? icon;
+  final double size;
+  final List<Shadow>? shadows;
+
+  // Geometry of the location_on glyph in its 24-unit box: the round head is
+  // centered at (12, 9) with a radius of about 7.
+  static const double _headCenterY = 9 / 24;
+  static const double _headRadius = 6 / 24;
+
+  @override
+  Widget build(BuildContext context) {
+    final pin = Icon(
+      Icons.location_on,
+      size: size,
+      color: color,
+      shadows: shadows,
+    );
+    final icon = this.icon;
+    if (icon == null) return pin;
+
+    final head = size * _headRadius * 2;
+    return SizedBox.square(
+      dimension: size,
+      child: Stack(
+        children: [
+          pin,
+          Positioned(
+            left: (size - head) / 2,
+            top: size * _headCenterY - head / 2,
+            child: Container(
+              width: head,
+              height: head,
+              // Covers the glyph's hole so the icon sits on solid color.
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              alignment: Alignment.center,
+              child: Icon(icon, size: head * 0.8, color: onColor(color)),
+            ),
+          ),
+        ],
       ),
     );
   }

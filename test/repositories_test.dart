@@ -336,6 +336,40 @@ void main() {
       expect((e.x, e.y), (0.5, 0.5));
     });
 
+    test('stores, changes and clears the icon', () async {
+      final mapId = await importTestMap();
+      final m = await markers.add(
+        mapId,
+        Offset.zero,
+        const MarkerDraft(label: 'Kaer Morhen', colorValue: 1, icon: 'castle'),
+      );
+      expect((await markers.watchMarkers(mapId).first).single.icon, 'castle');
+
+      await markers.edit(
+        m.id,
+        const MarkerDraft(label: 'Kaer Morhen', colorValue: 1, icon: 'fort'),
+      );
+      expect((await markers.watchMarkers(mapId).first).single.icon, 'fort');
+
+      await markers.edit(
+        m.id,
+        const MarkerDraft(label: 'Kaer Morhen', colorValue: 1),
+      );
+      expect((await markers.watchMarkers(mapId).first).single.icon, isNull);
+    });
+
+    test('restoring keeps the icon', () async {
+      final mapId = await importTestMap();
+      final m = await markers.add(
+        mapId,
+        Offset.zero,
+        const MarkerDraft(label: 'Skarb', colorValue: 1, icon: 'treasure'),
+      );
+      await markers.remove(m.id);
+      await markers.restore(m);
+      expect((await markers.watchMarkers(mapId).first).single.icon, 'treasure');
+    });
+
     test('moves a marker', () async {
       final mapId = await importTestMap();
       final m = await markers.add(mapId, Offset.zero, draft);

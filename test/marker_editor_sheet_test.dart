@@ -75,4 +75,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(result()!.colorValue, 0xFF1E88E5);
   });
+
+  testWidgets('picks an icon and shows its name', (tester) async {
+    final result = await openEditor(tester);
+    expect(find.text('zwykła pinezka'), findsOneWidget);
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Nazwa'),
+      'Wyzima',
+    );
+    await tester.tap(find.byTooltip('Zamek'));
+    await tester.pump();
+    expect(find.text('Zamek'), findsWidgets);
+    await tester.ensureVisible(find.text('Dodaj'));
+    await tester.tap(find.text('Dodaj'));
+    await tester.pumpAndSettle();
+    expect(result()!.icon, 'castle');
+  });
+
+  testWidgets('can go back to the plain pin', (tester) async {
+    final result = await openEditor(
+      tester,
+      initial: const MarkerDraft(label: 'Most', colorValue: 1, icon: 'castle'),
+    );
+    expect(find.text('Zamek'), findsWidgets);
+    await tester.tap(find.byTooltip('Zwykła pinezka'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('Zapisz'));
+    await tester.tap(find.text('Zapisz'));
+    await tester.pumpAndSettle();
+    expect(result()!.icon, isNull);
+  });
+
+  testWidgets('treats an unknown icon key as the plain pin', (tester) async {
+    final result = await openEditor(
+      tester,
+      initial: const MarkerDraft(label: 'X', colorValue: 1, icon: 'from-v99'),
+    );
+    expect(find.text('zwykła pinezka'), findsOneWidget);
+    await tester.ensureVisible(find.text('Zapisz'));
+    await tester.tap(find.text('Zapisz'));
+    await tester.pumpAndSettle();
+    expect(result()!.icon, isNull);
+  });
 }

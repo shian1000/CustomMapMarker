@@ -11,6 +11,7 @@ class MapMarker {
     this.description,
     required this.colorValue,
     required this.createdAt,
+    this.icon,
   });
 
   final String id;
@@ -27,12 +28,16 @@ class MapMarker {
   final int colorValue;
   final DateTime createdAt;
 
+  /// Key from `markerIcons`, or null for the plain pin.
+  final String? icon;
+
   MapMarker copyWith({
     double? x,
     double? y,
     String? label,
     ValueGetter<String?>? description,
     int? colorValue,
+    ValueGetter<String?>? icon,
   }) => MapMarker(
     id: id,
     mapId: mapId,
@@ -42,6 +47,7 @@ class MapMarker {
     description: description != null ? description() : this.description,
     colorValue: colorValue ?? this.colorValue,
     createdAt: createdAt,
+    icon: icon != null ? icon() : this.icon,
   );
 }
 
@@ -52,9 +58,11 @@ class MarkerDraft {
     required this.label,
     this.description,
     required this.colorValue,
+    this.icon,
   });
 
   final String label;
   final String? description;
   final int colorValue;
+  final String? icon;
 }

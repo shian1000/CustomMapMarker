@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/map_marker.dart';
+import '../../shared/marker_icons.dart';
+import '../../shared/widgets/marker_pin.dart';
 
 enum MarkerAction { edit, move, delete }
 
@@ -25,7 +27,10 @@ Future<MarkerAction?> showMarkerDetails(
         children: [
           Row(
             children: [
-              Icon(Icons.location_on, color: Color(marker.colorValue)),
+              PinGlyph(
+                color: Color(marker.colorValue),
+                icon: markerIconFor(marker.icon)?.icon,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(marker.label, style: theme.textTheme.titleLarge),

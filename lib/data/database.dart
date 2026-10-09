@@ -40,6 +40,9 @@ class Markers extends Table {
   IntColumn get colorValue => integer()();
   DateTimeColumn get createdAt => dateTime()();
 
+  /// Key from `markerIcons`, or null for the plain pin.
+  TextColumn get icon => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -66,7 +69,7 @@ class AppDatabase extends _$AppDatabase {
     : super(executor ?? driftDatabase(name: 'custom_map_marker'));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -77,6 +80,9 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 3) {
         await m.createTable(legend);
+      }
+      if (from < 4) {
+        await m.addColumn(markers, markers.icon);
       }
     },
     beforeOpen: (details) async {

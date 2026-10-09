@@ -34,6 +34,7 @@ class MarkerRepository {
       description: draft.description,
       colorValue: draft.colorValue,
       createdAt: DateTime.now(),
+      icon: draft.icon,
     );
     await restore(marker);
     return marker;
@@ -45,6 +46,7 @@ class MarkerRepository {
       label: Value(draft.label),
       description: Value(draft.description),
       colorValue: Value(draft.colorValue),
+      icon: Value(draft.icon),
     ),
   );
 
@@ -72,6 +74,7 @@ class MarkerRepository {
     description: row.description,
     colorValue: row.colorValue,
     createdAt: row.createdAt,
+    icon: row.icon,
   );
 
   static MarkerRow _toRow(MapMarker m) => MarkerRow(
@@ -83,5 +86,6 @@ class MarkerRepository {
     description: m.description,
     colorValue: m.colorValue,
     createdAt: m.createdAt,
+    icon: m.icon,
   );
 }

@@ -562,6 +562,15 @@ class $MarkersTable extends Markers with TableInfo<$MarkersTable, MarkerRow> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _iconMeta = const VerificationMeta('icon');
+  @override
+  late final GeneratedColumn<String> icon = GeneratedColumn<String>(
+    'icon',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -572,6 +581,7 @@ class $MarkersTable extends Markers with TableInfo<$MarkersTable, MarkerRow> {
     description,
     colorValue,
     createdAt,
+    icon,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -641,6 +651,12 @@ class $MarkersTable extends Markers with TableInfo<$MarkersTable, MarkerRow> {
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('icon')) {
+      context.handle(
+        _iconMeta,
+        icon.isAcceptableOrUnknown(data['icon']!, _iconMeta),
+      );
+    }
     return context;
   }
 
@@ -682,6 +698,10 @@ class $MarkersTable extends Markers with TableInfo<$MarkersTable, MarkerRow> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      icon: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}icon'],
+      ),
     );
   }
 
@@ -704,6 +724,9 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
   /// ARGB color value.
   final int colorValue;
   final DateTime createdAt;
+
+  /// Key from `markerIcons`, or null for the plain pin.
+  final String? icon;
   const MarkerRow({
     required this.id,
     required this.mapId,
@@ -713,6 +736,7 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
     this.description,
     required this.colorValue,
     required this.createdAt,
+    this.icon,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -727,6 +751,9 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
     }
     map['color_value'] = Variable<int>(colorValue);
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || icon != null) {
+      map['icon'] = Variable<String>(icon);
+    }
     return map;
   }
 
@@ -742,6 +769,7 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
           : Value(description),
       colorValue: Value(colorValue),
       createdAt: Value(createdAt),
+      icon: icon == null && nullToAbsent ? const Value.absent() : Value(icon),
     );
   }
 
@@ -759,6 +787,7 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
       description: serializer.fromJson<String?>(json['description']),
       colorValue: serializer.fromJson<int>(json['colorValue']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      icon: serializer.fromJson<String?>(json['icon']),
     );
   }
   @override
@@ -773,6 +802,7 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
       'description': serializer.toJson<String?>(description),
       'colorValue': serializer.toJson<int>(colorValue),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'icon': serializer.toJson<String?>(icon),
     };
   }
 
@@ -785,6 +815,7 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
     Value<String?> description = const Value.absent(),
     int? colorValue,
     DateTime? createdAt,
+    Value<String?> icon = const Value.absent(),
   }) => MarkerRow(
     id: id ?? this.id,
     mapId: mapId ?? this.mapId,
@@ -794,6 +825,7 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
     description: description.present ? description.value : this.description,
     colorValue: colorValue ?? this.colorValue,
     createdAt: createdAt ?? this.createdAt,
+    icon: icon.present ? icon.value : this.icon,
   );
   MarkerRow copyWithCompanion(MarkersCompanion data) {
     return MarkerRow(
@@ -809,6 +841,7 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
           ? data.colorValue.value
           : this.colorValue,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      icon: data.icon.present ? data.icon.value : this.icon,
     );
   }
 
@@ -822,14 +855,24 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
           ..write('label: $label, ')
           ..write('description: $description, ')
           ..write('colorValue: $colorValue, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('icon: $icon')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, mapId, x, y, label, description, colorValue, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    mapId,
+    x,
+    y,
+    label,
+    description,
+    colorValue,
+    createdAt,
+    icon,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -841,7 +884,8 @@ class MarkerRow extends DataClass implements Insertable<MarkerRow> {
           other.label == this.label &&
           other.description == this.description &&
           other.colorValue == this.colorValue &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.icon == this.icon);
 }
 
 class MarkersCompanion extends UpdateCompanion<MarkerRow> {
@@ -853,6 +897,7 @@ class MarkersCompanion extends UpdateCompanion<MarkerRow> {
   final Value<String?> description;
   final Value<int> colorValue;
   final Value<DateTime> createdAt;
+  final Value<String?> icon;
   final Value<int> rowid;
   const MarkersCompanion({
     this.id = const Value.absent(),
@@ -863,6 +908,7 @@ class MarkersCompanion extends UpdateCompanion<MarkerRow> {
     this.description = const Value.absent(),
     this.colorValue = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.icon = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MarkersCompanion.insert({
@@ -874,6 +920,7 @@ class MarkersCompanion extends UpdateCompanion<MarkerRow> {
     this.description = const Value.absent(),
     required int colorValue,
     required DateTime createdAt,
+    this.icon = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        mapId = Value(mapId),
@@ -891,6 +938,7 @@ class MarkersCompanion extends UpdateCompanion<MarkerRow> {
     Expression<String>? description,
     Expression<int>? colorValue,
     Expression<DateTime>? createdAt,
+    Expression<String>? icon,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -902,6 +950,7 @@ class MarkersCompanion extends UpdateCompanion<MarkerRow> {
       if (description != null) 'description': description,
       if (colorValue != null) 'color_value': colorValue,
       if (createdAt != null) 'created_at': createdAt,
+      if (icon != null) 'icon': icon,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -915,6 +964,7 @@ class MarkersCompanion extends UpdateCompanion<MarkerRow> {
     Value<String?>? description,
     Value<int>? colorValue,
     Value<DateTime>? createdAt,
+    Value<String?>? icon,
     Value<int>? rowid,
   }) {
     return MarkersCompanion(
@@ -926,6 +976,7 @@ class MarkersCompanion extends UpdateCompanion<MarkerRow> {
       description: description ?? this.description,
       colorValue: colorValue ?? this.colorValue,
       createdAt: createdAt ?? this.createdAt,
+      icon: icon ?? this.icon,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -957,6 +1008,9 @@ class MarkersCompanion extends UpdateCompanion<MarkerRow> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (icon.present) {
+      map['icon'] = Variable<String>(icon.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -974,6 +1028,7 @@ class MarkersCompanion extends UpdateCompanion<MarkerRow> {
           ..write('description: $description, ')
           ..write('colorValue: $colorValue, ')
           ..write('createdAt: $createdAt, ')
+          ..write('icon: $icon, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1758,6 +1813,7 @@ typedef $$MarkersTableCreateCompanionBuilder = MarkersCompanion Function({
   Value<String?> description,
   required int colorValue,
   required DateTime createdAt,
+  Value<String?> icon,
   Value<int> rowid,
 });
 typedef $$MarkersTableUpdateCompanionBuilder = MarkersCompanion Function({
@@ -1769,6 +1825,7 @@ typedef $$MarkersTableUpdateCompanionBuilder = MarkersCompanion Function({
   Value<String?> description,
   Value<int> colorValue,
   Value<DateTime> createdAt,
+  Value<String?> icon,
   Value<int> rowid,
 });
 
@@ -1835,6 +1892,11 @@ class $$MarkersTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get icon => $composableBuilder(
+    column: $table.icon,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1906,6 +1968,11 @@ class $$MarkersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$MapsTableOrderingComposer get mapId {
     final $$MapsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -1963,6 +2030,9 @@ class $$MarkersTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get icon =>
+      $composableBuilder(column: $table.icon, builder: (column) => column);
 
   $$MapsTableAnnotationComposer get mapId {
     final $$MapsTableAnnotationComposer composer = $composerBuilder(
@@ -2024,6 +2094,7 @@ class $$MarkersTableTableManager
                 Value<String?> description = const Value.absent(),
                 Value<int> colorValue = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> icon = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MarkersCompanion(
                 id: id,
@@ -2034,6 +2105,7 @@ class $$MarkersTableTableManager
                 description: description,
                 colorValue: colorValue,
                 createdAt: createdAt,
+                icon: icon,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2046,6 +2118,7 @@ class $$MarkersTableTableManager
                 Value<String?> description = const Value.absent(),
                 required int colorValue,
                 required DateTime createdAt,
+                Value<String?> icon = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MarkersCompanion.insert(
                 id: id,
@@ -2056,6 +2129,7 @@ class $$MarkersTableTableManager
                 description: description,
                 colorValue: colorValue,
                 createdAt: createdAt,
+                icon: icon,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
