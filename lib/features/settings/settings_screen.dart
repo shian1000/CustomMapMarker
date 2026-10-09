@@ -61,6 +61,16 @@ class SettingsScreen extends ConsumerWidget {
             value: settings.showAreaNames,
             onChanged: notifier.setShowAreaNames,
           ),
+          header('Znaczniki'),
+          SwitchListTile(
+            title: const Text('Grupuj pobliskie znaczniki'),
+            subtitle: const Text(
+              'Po oddaleniu nachodzące na siebie znaczniki są pokazywane '
+              'jako kółko z liczbą',
+            ),
+            value: settings.clusterMarkers,
+            onChanged: notifier.setClusterMarkers,
+          ),
         ],
       ),
     );

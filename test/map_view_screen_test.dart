@@ -68,7 +68,8 @@ void main() {
               ..setBool('showRouteNames', settings.showRouteNames)
               ..setBool('showAreaNames', settings.showAreaNames)
               ..setBool('showRoutes', settings.showRoutes)
-              ..setBool('showAreas', settings.showAreas),
+              ..setBool('showAreas', settings.showAreas)
+              ..setBool('clusterMarkers', settings.clusterMarkers),
           ),
           mapRepositoryProvider.overrideWithValue(repo),
         ],
@@ -301,6 +302,20 @@ void main() {
       expect(badge.color, isNull);
       expect(find.byType(MarkerPin), findsOneWidget);
       expect(find.text('Kaer Morhen'), findsOneWidget);
+    });
+
+    testWidgets('shows every marker when grouping is off in settings', (
+      tester,
+    ) async {
+      await pumpMap(
+        tester,
+        width: 4000,
+        height: 3000,
+        markers: [...close, lone],
+        settings: const AppSettings(clusterMarkers: false),
+      );
+      expect(find.byType(MarkerClusterBadge), findsNothing);
+      expect(find.byType(MarkerPin), findsNWidgets(4));
     });
 
     testWidgets('tapping a cluster zooms in until it splits', (tester) async {

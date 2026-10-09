@@ -10,8 +10,15 @@ void main() {
     addTearDown(container.dispose);
     final s = container.read(settingsProvider);
     expect(
-      (s.snapToMarkers, s.showRouteNames, s.showAreaNames),
-      (true, true, true),
+      (
+        s.snapToMarkers,
+        s.showRouteNames,
+        s.showAreaNames,
+        s.showRoutes,
+        s.showAreas,
+        s.clusterMarkers,
+      ),
+      (true, true, true, true, true, true),
     );
   });
 
@@ -26,6 +33,10 @@ void main() {
     await container.read(settingsProvider.notifier).setSnapToMarkers(false);
     expect(container.read(settingsProvider).snapToMarkers, isFalse);
     expect(store.getBool('snapToMarkers'), isFalse);
+
+    await container.read(settingsProvider.notifier).setClusterMarkers(false);
+    expect(container.read(settingsProvider).clusterMarkers, isFalse);
+    expect(store.getBool('clusterMarkers'), isFalse);
   });
 
   testWidgets('the settings screen toggles options', (tester) async {
@@ -43,5 +54,22 @@ void main() {
       find.widgetWithText(SwitchListTile, 'Nazwy tras'),
     );
     expect(tile.value, isFalse);
+  });
+
+  testWidgets('the settings screen turns marker grouping off', (tester) async {
+    final store = MemorySettingsStore();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [settingsStoreProvider.overrideWithValue(store)],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Grupuj pobliskie znaczniki'),
+      100,
+    );
+    await tester.tap(find.text('Grupuj pobliskie znaczniki'));
+    await tester.pump();
+    expect(store.getBool('clusterMarkers'), isFalse);
   });
 }

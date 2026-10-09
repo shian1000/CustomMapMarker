@@ -1094,7 +1094,10 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
                     ClusteredMarkerLayer(
                       markers: markers,
                       positionOf: (m) => _mapper.toLatLng(Offset(m.x, m.y)),
-                      clusterBelowZoom: _mapper.nativeZoom,
+                      // Nothing is clustered below -infinity, i.e. never.
+                      clusterBelowZoom: settings.clusterMarkers
+                          ? _mapper.nativeZoom
+                          : double.negativeInfinity,
                       neverCluster: {?moving?.id, ?_focusedId},
                       onClusterTap: _zoomToCluster,
                       pinBuilder: (m) => MarkerPin(

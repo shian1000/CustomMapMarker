@@ -19,7 +19,7 @@ and export/share maps. The user (Polish speaker) drives development stage by sta
 
 ## Commands & skills
 
-- Tests: `flutter test` (173 tests at the end of stage 7d, all green). Analyze: `flutter analyze`.
+- Tests: `flutter test` (179 tests at the end of stage 7f, all green). Analyze: `flutter analyze`.
 - Drift codegen after changing `lib/data/database.dart`: `dart run build_runner build`
   (`database.g.dart` is committed).
 - Project skills in `.claude/skills/`:
@@ -91,6 +91,13 @@ android/.../TileRenderer.kt   native tile rendering (BitmapRegionDecoder / whole
 - **.cmm export** = ZIP with `manifest.json` (+ uncompressed image). `formatVersion` 2 (shapes).
   Optional fields (e.g. `metersPerPixel`) don't bump the version. Import always creates a new map
   with new ids; v1 files still import; newer versions are rejected with a clear message.
+- **Opening files from other apps** (7e): intent filters in `AndroidManifest.xml` (VIEW for
+  zip/octet-stream + `.cmm` path patterns, SEND). `IncomingFiles.kt` copies the content URI to
+  `cache/incoming/` at once (the grant is temporary); Dart pulls paths over the
+  `custom_map_marker/incoming` channel (`lib/data/incoming_files.dart`), the maps list imports
+  them one by one on top of whatever is open and deletes the copy. Activity is `singleTask`
+  (otherwise "Open with" started a second instance in the caller's task); a restored/recents
+  launch doesn't re-import the original intent.
 - **Scale**: `maps.metersPerPixel` (per map). Lengths/areas in `core/measure.dart`, Polish
   formatting (decimal comma, NBSP thousands, m²/ha/km²).
 - Clustering is our own (`flutter_map_marker_cluster` is incompatible with latlong2 0.10).
@@ -110,16 +117,13 @@ android/.../TileRenderer.kt   native tile rendering (BitmapRegionDecoder / whole
 Done: stages 0–6 (import, markers, persistence, maps list, tiles, 6a–6g: naming/rename/tiling of
 old maps, marker list+search+fly-to, legend & color filter, icons, .cmm export/import, clustering,
 PNG snapshot) and 7a–7d (routes & areas: draw, select/edit/delete, drag/insert/delete points;
-lists/legend/export/PNG integration; global settings; map scale, ruler, lengths/areas, scale bar).
+lists/legend/export/PNG integration; global settings; map scale, ruler, lengths/areas, scale bar)
+7e (opening `.cmm` files from other apps; tested on both phones) and 7f (global "Grupuj pobliskie
+znaczniki" setting, `AppSettings.clusterMarkers`, default on).
 
 ### Remaining (agreed order)
 
-1. **7e** — open `.cmm` files tapped in other apps (Files, Gmail, Drive): Android intent filters
-   ("Open with…"; custom extensions are poorly recognized, so also register generic types) and
-   route the incoming file to `MapTransfer.import`. Test on both phones (behaviour varies by
-   vendor).
-2. **7f** — global setting "Grupuj pobliskie znaczniki" (clustering on/off) in Settings.
-3. **7g** — faster import of big PNGs (45 s on the Huawei, 21 s on the Pixel for 5456×7567):
+1. **7g** — faster import of big PNGs (45 s on the Huawei, 21 s on the Pixel for 5456×7567):
    measure first (decode vs. scaling vs. writing ~900 tiles), then e.g. generate lower levels first
    and the full-resolution level in the background.
 

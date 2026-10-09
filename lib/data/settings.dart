@@ -11,6 +11,7 @@ class AppSettings {
     this.showAreaNames = true,
     this.showRoutes = true,
     this.showAreas = true,
+    this.clusterMarkers = true,
   });
 
   /// While drawing a route or area, a tap near a marker puts the point
@@ -23,18 +24,23 @@ class AppSettings {
   final bool showRoutes;
   final bool showAreas;
 
+  /// Overlapping markers are grouped into a counted circle when zoomed out.
+  final bool clusterMarkers;
+
   AppSettings copyWith({
     bool? snapToMarkers,
     bool? showRouteNames,
     bool? showAreaNames,
     bool? showRoutes,
     bool? showAreas,
+    bool? clusterMarkers,
   }) => AppSettings(
     snapToMarkers: snapToMarkers ?? this.snapToMarkers,
     showRouteNames: showRouteNames ?? this.showRouteNames,
     showAreaNames: showAreaNames ?? this.showAreaNames,
     showRoutes: showRoutes ?? this.showRoutes,
     showAreas: showAreas ?? this.showAreas,
+    clusterMarkers: clusterMarkers ?? this.clusterMarkers,
   );
 }
 
@@ -67,6 +73,7 @@ class PrefsSettingsStore implements SettingsStore {
     SettingsNotifier._areaNamesKey,
     SettingsNotifier._routesKey,
     SettingsNotifier._areasKey,
+    SettingsNotifier._clusterKey,
   };
 
   /// Loads stored settings once, so screens never show defaults first.
@@ -97,6 +104,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _areaNamesKey = 'showAreaNames';
   static const _routesKey = 'showRoutes';
   static const _areasKey = 'showAreas';
+  static const _clusterKey = 'clusterMarkers';
 
   SettingsStore get _store => ref.read(settingsStoreProvider);
 
@@ -110,6 +118,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       showAreaNames: store.getBool(_areaNamesKey) ?? defaults.showAreaNames,
       showRoutes: store.getBool(_routesKey) ?? defaults.showRoutes,
       showAreas: store.getBool(_areasKey) ?? defaults.showAreas,
+      clusterMarkers: store.getBool(_clusterKey) ?? defaults.clusterMarkers,
     );
   }
 
@@ -136,5 +145,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setShowAreas(bool value) {
     state = state.copyWith(showAreas: value);
     return _store.setBool(_areasKey, value);
+  }
+
+  Future<void> setClusterMarkers(bool value) {
+    state = state.copyWith(clusterMarkers: value);
+    return _store.setBool(_clusterKey, value);
   }
 }
