@@ -19,7 +19,7 @@ and export/share maps. The user (Polish speaker) drives development stage by sta
 
 ## Commands & skills
 
-- Tests: `flutter test` (179 tests at the end of stage 7f, all green). Analyze: `flutter analyze`.
+- Tests: `flutter test` (179 tests at the end of stage 7g, all green). Analyze: `flutter analyze`.
 - Drift codegen after changing `lib/data/database.dart`: `dart run build_runner build`
   (`database.g.dart` is committed).
 - Project skills in `.claude/skills/`:
@@ -71,7 +71,10 @@ android/.../TileRenderer.kt   native tile rendering (BitmapRegionDecoder / whole
   - JPEG on Android: tiles rendered **on demand** natively (`renderTile`), cached on disk.
   - PNG/WebP on Android: **all tiles generated at import** natively (`generateAllTiles`) because
     region-decoding PNG re-reads from the top per tile (was tens of seconds → blank map).
-    Falls back to on-demand if the image doesn't fit in memory.
+    Falls back to on-demand if the image doesn't fit in memory. Measured (7g): decoding is ~1 s,
+    tile *compression* was 95 % of the time — PNG maps with an unused alpha channel made every
+    tile a slow PNG. Now each tile is checked for real transparency (JPEG if fully opaque) and
+    compressed on up to 4 threads: 45.7 s → 2.9 s on the Huawei for the 5456×7567 map.
   - Elsewhere / GIF/BMP: Dart generator in an isolate (slow).
   - Tiles are requested `levelsUp` levels higher on dense screens (DPR ≈ 2.6) so they're sharp.
   - `_TileCompleter` tolerates tiles dropped mid-render (was "Stream has been disposed").
@@ -118,14 +121,13 @@ Done: stages 0–6 (import, markers, persistence, maps list, tiles, 6a–6g: nam
 old maps, marker list+search+fly-to, legend & color filter, icons, .cmm export/import, clustering,
 PNG snapshot) and 7a–7d (routes & areas: draw, select/edit/delete, drag/insert/delete points;
 lists/legend/export/PNG integration; global settings; map scale, ruler, lengths/areas, scale bar)
-7e (opening `.cmm` files from other apps; tested on both phones) and 7f (global "Grupuj pobliskie
-znaczniki" setting, `AppSettings.clusterMarkers`, default on).
+7e (opening `.cmm` files from other apps; tested on both phones), 7f (global "Grupuj pobliskie
+znaczniki" setting, `AppSettings.clusterMarkers`, default on) and 7g (fast native tiling, see
+above; Huawei-verified, Pixel not yet).
 
 ### Remaining (agreed order)
 
-1. **7g** — faster import of big PNGs (45 s on the Huawei, 21 s on the Pixel for 5456×7567):
-   measure first (decode vs. scaling vs. writing ~900 tiles), then e.g. generate lower levels first
-   and the full-resolution level in the background.
+Nothing agreed yet — ask the user what's next.
 
 Ideas mentioned but not planned: scale bar in PNG exports, linking route points to markers,
 curved segments (user explicitly wants straight ones).

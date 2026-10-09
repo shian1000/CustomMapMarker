@@ -14,6 +14,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.Executors
 import kotlin.math.ceil
 import kotlin.math.min
@@ -119,6 +120,10 @@ class TileRenderer(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler
      * Needed for PNG/WebP: unlike JPEG, they can't be decoded from the middle,
      * so [BitmapRegionDecoder] re-reads the image from the top for every tile,
      * which made on-demand tiles of a 40 MP PNG take tens of seconds.
+     *
+     * Compressing the tiles takes far longer than decoding, so they're
+     * compressed on several threads; at most [IN_FLIGHT] cropped tiles wait in
+     * memory at a time.
      */
     private fun generateAllTiles(
         imagePath: String,
@@ -149,7 +154,6 @@ class TileRenderer(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler
             imagePath,
             BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 },
         ) ?: throw IllegalStateException("Cannot decode $imagePath")
-        val opaque = !level.hasAlpha()
 
         val total = (0..maxZoom).sumOf { z ->
             val lw = ceilDiv(width, 1 shl (maxZoom - z))
@@ -158,6 +162,21 @@ class TileRenderer(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler
         }
         var done = 0
         var lastReported = -1
+        val pool = Executors.newFixedThreadPool(compressThreads())
+        val written = ExecutorCompletionService<Unit>(pool)
+        var inFlight = 0
+
+        // Waits for one submitted tile; rethrows its failure.
+        fun awaitOne() {
+            written.take().get()
+            inFlight--
+            done++
+            val percent = done * 100 / total
+            if (percent != lastReported) {
+                lastReported = percent
+                report(done.toDouble() / total)
+            }
+        }
 
         try {
             for (z in maxZoom downTo 0) {
@@ -176,26 +195,28 @@ class TileRenderer(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler
                     for (y in 0 until ceilDiv(level.height, TILE_SIZE)) {
                         val left = x * TILE_SIZE
                         val top = y * TILE_SIZE
-                        val crop = Bitmap.createBitmap(
-                            level,
-                            left,
-                            top,
-                            min(TILE_SIZE, level.width - left),
-                            min(TILE_SIZE, level.height - top),
-                        )
-                        writeTile(crop, File(tilesDir, "$z/$x/$y"), opaque)
-                        if (crop !== level) crop.recycle()
-
-                        done++
-                        val percent = done * 100 / total
-                        if (percent != lastReported) {
-                            lastReported = percent
-                            report(done.toDouble() / total)
+                        val cropWidth = min(TILE_SIZE, level.width - left)
+                        val cropHeight = min(TILE_SIZE, level.height - top)
+                        // createBitmap returns the source itself for a crop
+                        // of all of it; the tile job recycles its crop.
+                        val crop = if (cropWidth == level.width && cropHeight == level.height) {
+                            level.copy(level.config ?: Bitmap.Config.ARGB_8888, false)
+                        } else {
+                            Bitmap.createBitmap(level, left, top, cropWidth, cropHeight)
                         }
+                        if (inFlight == IN_FLIGHT) awaitOne()
+                        val out = File(tilesDir, "$z/$x/$y")
+                        written.submit {
+                            writeTile(crop, out)
+                            crop.recycle()
+                        }
+                        inFlight++
                     }
                 }
             }
+            while (inFlight > 0) awaitOne()
         } finally {
+            pool.shutdownNow()
             level.recycle()
         }
     }
@@ -238,25 +259,27 @@ class TileRenderer(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler
         // decoder may round differently, so draw scaled to exactly this.
         val width = ceil((right - left) / sample.toDouble()).toInt()
         val height = ceil((bottom - top) / sample.toDouble()).toInt()
-        val opaque = !region.hasAlpha()
 
         val scaled = if (region.width == width && region.height == height) {
             region
         } else {
             Bitmap.createScaledBitmap(region, width, height, true).also { region.recycle() }
         }
-        writeTile(scaled, File(outPath), opaque)
+        writeTile(scaled, File(outPath))
         scaled.recycle()
     }
 
     /**
      * Writes [content] (at most TILE_SIZE square) as a tile: JPEG when it fills
-     * the whole tile and is [opaque], otherwise PNG padded with transparency.
-     * Writes to a temp file and renames it, so a half-written tile is never read.
+     * the whole tile and has no transparent pixels, otherwise PNG padded with
+     * transparency. Writes to a temp file and renames it, so a half-written
+     * tile is never read.
      */
-    private fun writeTile(content: Bitmap, out: File, opaque: Boolean) {
+    private fun writeTile(content: Bitmap, out: File) {
         val isFull = content.width == TILE_SIZE && content.height == TILE_SIZE
-        val asJpeg = isFull && opaque
+        // PNG compression is many times slower than JPEG, and plenty of PNG
+        // maps carry an alpha channel without using it.
+        val asJpeg = isFull && isOpaque(content)
         val tile = if (isFull) {
             content
         } else {
@@ -281,6 +304,20 @@ class TileRenderer(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler
         }
     }
 
+    /** Whether every pixel of [bitmap] is fully opaque. */
+    private fun isOpaque(bitmap: Bitmap): Boolean {
+        if (!bitmap.hasAlpha()) return true
+        val row = IntArray(bitmap.width)
+        for (y in 0 until bitmap.height) {
+            bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
+            for (pixel in row) if (pixel ushr 24 != 0xFF) return false
+        }
+        return true
+    }
+
+    private fun compressThreads() =
+        (Runtime.getRuntime().availableProcessors() - 1).coerceIn(1, MAX_COMPRESS_THREADS)
+
     private class TooLargeException(message: String) : Exception(message)
 
     private fun ceilDiv(a: Int, b: Int) = (a + b - 1) / b
@@ -290,5 +327,7 @@ class TileRenderer(messenger: BinaryMessenger) : MethodChannel.MethodCallHandler
         const val TILE_SIZE = 256
         const val JPEG_QUALITY = 88
         const val THREADS = 3
+        const val MAX_COMPRESS_THREADS = 4
+        const val IN_FLIGHT = 16
     }
 }
