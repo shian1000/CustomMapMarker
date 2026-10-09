@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -17,6 +18,7 @@ import '../../data/providers.dart';
 import '../../shared/widgets/marker_pin.dart';
 import '../marker_editor/marker_details_sheet.dart';
 import '../maps_list/map_dialogs.dart';
+import '../marker_list/marker_list_sheet.dart';
 import '../marker_editor/marker_editor_sheet.dart';
 import 'local_tile_provider.dart';
 
@@ -29,11 +31,17 @@ class MapViewScreen extends ConsumerStatefulWidget {
   ConsumerState<MapViewScreen> createState() => _MapViewScreenState();
 }
 
-class _MapViewScreenState extends ConsumerState<MapViewScreen> {
+class _MapViewScreenState extends ConsumerState<MapViewScreen>
+    with TickerProviderStateMixin {
   static const _fitPadding = EdgeInsets.all(16);
 
   /// How far past 1:1 pixel scale the user may zoom in (2^3 = 8x).
   static const _maxOverZoom = 3.0;
+
+  /// Flying to a marker zooms in at least this far past the whole-map view.
+  static const _flyToZoomIn = 2.0;
+  static const _flightDuration = Duration(milliseconds: 600);
+  static const _focusDuration = Duration(seconds: 2);
 
   final _controller = MapController();
   late final _mapper = MapCoordinateMapper(
@@ -63,8 +71,17 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
   CameraFit get _fitImage =>
       CameraFit.bounds(bounds: _mapper.bounds, padding: _fitPadding);
 
+  /// Camera animation started from the marker list.
+  AnimationController? _flight;
+
+  /// Marker briefly emphasized after flying to it.
+  String? _focusedId;
+  Timer? _focusTimer;
+
   @override
   void dispose() {
+    _flight?.dispose();
+    _focusTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -74,6 +91,55 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
     if (name == null || name == currentName) return;
     await ref.read(mapRepositoryProvider).rename(widget.project.id, name);
   }
+
+  Future<void> _openMarkerList(List<MapMarker> markers) async {
+    final marker = await showMarkerList(context, markers);
+    if (marker == null || !mounted) return;
+    await _flyTo(_mapper.toLatLng(Offset(marker.x, marker.y)));
+    if (!mounted) return;
+    _focusTimer?.cancel();
+    setState(() => _focusedId = marker.id);
+    _focusTimer = Timer(_focusDuration, () {
+      if (mounted) setState(() => _focusedId = null);
+    });
+  }
+
+  /// Smoothly moves the camera to [target], zooming in if the map is shown
+  /// too far out to make out the spot. flutter_map has no camera animation of
+  /// its own, so this interpolates center and zoom frame by frame.
+  Future<void> _flyTo(LatLng target) async {
+    final camera = _controller.camera;
+    final closeUp = _mapper.fitZoom(camera.nonRotatedSize) + _flyToZoomIn;
+    final endZoom = max(camera.zoom, closeUp).clamp(
+      camera.minZoom ?? double.negativeInfinity,
+      camera.maxZoom ?? double.infinity,
+    );
+    final start = camera.center;
+    final startZoom = camera.zoom;
+
+    _flight?.dispose();
+    final flight = _flight = AnimationController(
+      vsync: this,
+      duration: _flightDuration,
+    );
+    final t = CurvedAnimation(parent: flight, curve: Curves.easeInOutCubic);
+    flight.addListener(() {
+      _controller.move(
+        LatLng(
+          _lerp(start.latitude, target.latitude, t.value),
+          _lerp(start.longitude, target.longitude, t.value),
+        ),
+        _lerp(startZoom, endZoom, t.value),
+      );
+    });
+    try {
+      await flight.forward().orCancel;
+    } on TickerCanceled {
+      // Interrupted by the user grabbing the map, or the screen closing.
+    }
+  }
+
+  static double _lerp(double a, double b, double t) => a + (b - a) * t;
 
   void _zoomBy(double delta) {
     final camera = _controller.camera;
@@ -198,6 +264,11 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
         title: Text(name),
         actions: [
           IconButton(
+            tooltip: 'Lista znaczników',
+            onPressed: moving == null ? () => _openMarkerList(markers) : null,
+            icon: const Icon(Icons.format_list_bulleted),
+          ),
+          IconButton(
             tooltip: 'Zmień nazwę',
             onPressed: () => _rename(name),
             icon: const Icon(Icons.edit_outlined),
@@ -231,6 +302,10 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                     flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                   ),
                   onLongPress: _onLongPress,
+                  onPositionChanged: (_, hasGesture) {
+                    // Let the user take over mid-flight.
+                    if (hasGesture) _flight?.stop();
+                  },
                   onTap: _onTap,
                 ),
                 children: [
@@ -247,7 +322,9 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                           child: MarkerPin(
                             label: m.label,
                             color: Color(m.colorValue),
-                            highlighted: m.id == moving?.id,
+                            highlighted:
+                                m.id == moving?.id || m.id == _focusedId,
+                            emphasized: m.id == _focusedId,
                             onTap: () => _onMarkerTap(m),
                           ),
                         ),

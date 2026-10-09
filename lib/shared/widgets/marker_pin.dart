@@ -10,6 +10,7 @@ class MarkerPin extends StatelessWidget {
     required this.label,
     required this.color,
     this.highlighted = false,
+    this.emphasized = false,
     this.onTap,
   });
 
@@ -23,6 +24,9 @@ class MarkerPin extends StatelessWidget {
   final String label;
   final Color color;
   final bool highlighted;
+
+  /// Briefly enlarges the pin, e.g. after flying to it from the marker list.
+  final bool emphasized;
   final VoidCallback? onTap;
 
   @override
@@ -54,26 +58,32 @@ class MarkerPin extends StatelessWidget {
 
     return Align(
       alignment: Alignment.bottomCenter,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Transform.translate(
-          offset: const Offset(0, _tipInset),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              bubble,
-              Icon(
-                Icons.location_on,
-                size: _iconSize,
-                color: color,
-                shadows: [
-                  Shadow(
-                    blurRadius: highlighted ? 6 : 3,
-                    color: highlighted ? Colors.white : Colors.black54,
-                  ),
-                ],
-              ),
-            ],
+      child: AnimatedScale(
+        scale: emphasized ? 1.3 : 1,
+        alignment: Alignment.bottomCenter,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutBack,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Transform.translate(
+            offset: const Offset(0, _tipInset),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                bubble,
+                Icon(
+                  Icons.location_on,
+                  size: _iconSize,
+                  color: color,
+                  shadows: [
+                    Shadow(
+                      blurRadius: highlighted ? 6 : 3,
+                      color: highlighted ? Colors.white : Colors.black54,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

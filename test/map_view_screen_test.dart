@@ -1,4 +1,5 @@
 import 'package:custom_map_marker/core/coordinate_mapper.dart';
+import 'package:custom_map_marker/data/map_marker.dart';
 import 'package:custom_map_marker/data/map_project.dart';
 import 'package:custom_map_marker/data/providers.dart';
 import 'package:custom_map_marker/features/map_view/map_view_screen.dart';
@@ -17,6 +18,7 @@ void main() {
     required int width,
     required int height,
     int? tileMaxZoom,
+    List<MapMarker> markers = const [],
   }) async {
     // Same logical size as the test phone (1080x2340 @ 2.75).
     tester.view.physicalSize = const Size(1080, 2340);
@@ -33,7 +35,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          markersProvider.overrideWith((ref, mapId) => Stream.value(const [])),
+          markersProvider.overrideWith((ref, mapId) => Stream.value(markers)),
           mapRepositoryProvider.overrideWithValue(repo),
         ],
         child: MaterialApp(home: MapViewScreen(project: project)),
@@ -128,5 +130,38 @@ void main() {
 
     expect(repo.renamed, [('map', 'Temeria')]);
     expect(find.widgetWithText(AppBar, 'Temeria'), findsOneWidget);
+  });
+
+  testWidgets('flies to a marker picked from the list', (tester) async {
+    final camera = await pumpMap(
+      tester,
+      width: 4000,
+      height: 3000,
+      markers: [
+        MapMarker(
+          id: 'k',
+          mapId: 'map',
+          x: 0.9,
+          y: 0.1,
+          label: 'Kaer Morhen',
+          colorValue: 0xFF1E88E5,
+          createdAt: DateTime(2026),
+        ),
+      ],
+    );
+    final fitted = camera().zoom;
+
+    await tester.tap(find.byTooltip('Lista znaczników'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Kaer Morhen'));
+    await tester.pumpAndSettle();
+
+    final target = MapCoordinateMapper(
+      widthPx: 4000,
+      heightPx: 3000,
+    ).toLatLng(const Offset(0.9, 0.1));
+    expect(camera().center.latitude, closeTo(target.latitude, 1e-9));
+    expect(camera().center.longitude, closeTo(target.longitude, 1e-9));
+    expect(camera().zoom, closeTo(fitted + 2, 0.2));
   });
 }
