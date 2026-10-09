@@ -1,8 +1,11 @@
 import 'package:custom_map_marker/core/coordinate_mapper.dart';
+import 'package:custom_map_marker/data/legend.dart';
 import 'package:custom_map_marker/data/map_marker.dart';
 import 'package:custom_map_marker/data/map_project.dart';
 import 'package:custom_map_marker/data/providers.dart';
 import 'package:custom_map_marker/features/map_view/map_view_screen.dart';
+import 'package:custom_map_marker/shared/marker_colors.dart';
+import 'package:custom_map_marker/shared/widgets/marker_pin.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +15,13 @@ import 'fakes.dart';
 
 void main() {
   late FakeMapRepository repo;
+  late FakeLegendRepository legendRepo;
+  late FakeMarkerRepository markerRepo;
+
+  setUp(() {
+    legendRepo = FakeLegendRepository();
+    markerRepo = FakeMarkerRepository();
+  });
 
   Future<MapCamera Function()> pumpMap(
     WidgetTester tester, {
@@ -19,6 +29,7 @@ void main() {
     required int height,
     int? tileMaxZoom,
     List<MapMarker> markers = const [],
+    MapLegend legend = const {},
   }) async {
     // Same logical size as the test phone (1080x2340 @ 2.75).
     tester.view.physicalSize = const Size(1080, 2340);
@@ -36,6 +47,9 @@ void main() {
       ProviderScope(
         overrides: [
           markersProvider.overrideWith((ref, mapId) => Stream.value(markers)),
+          legendProvider.overrideWith((ref, mapId) => Stream.value(legend)),
+          legendRepositoryProvider.overrideWithValue(legendRepo),
+          markerRepositoryProvider.overrideWithValue(markerRepo),
           mapRepositoryProvider.overrideWithValue(repo),
         ],
         child: MaterialApp(home: MapViewScreen(project: project)),
@@ -163,5 +177,71 @@ void main() {
     expect(camera().center.latitude, closeTo(target.latitude, 1e-9));
     expect(camera().center.longitude, closeTo(target.longitude, 1e-9));
     expect(camera().zoom, closeTo(fitted + 2, 0.2));
+  });
+
+  group('legend filter', () {
+    final red = markerColors[0].toARGB32();
+    final green = markerColors[3].toARGB32();
+    final markers = [
+      testMarker('1', 'Wyzima', color: red),
+      testMarker('2', 'Las', color: green),
+    ];
+
+    testWidgets('hides markers of hidden colors and flags the filter', (
+      tester,
+    ) async {
+      await pumpMap(
+        tester,
+        width: 1000,
+        height: 800,
+        markers: markers,
+        legend: {red: const LegendEntry(hidden: true)},
+      );
+      expect(find.byType(MarkerPin), findsOneWidget);
+      expect(find.text('Las'), findsOneWidget);
+      expect(find.text('Wyzima'), findsNothing);
+      final badge = tester.widget<Badge>(find.byType(Badge));
+      expect(badge.isLabelVisible, isTrue);
+
+      await tester.tap(find.byTooltip('Lista znaczników'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 z 1 · 1 ukryty filtrem'), findsOneWidget);
+    });
+
+    testWidgets('shows everything and no flag without hidden colors', (
+      tester,
+    ) async {
+      await pumpMap(tester, width: 1000, height: 800, markers: markers);
+      expect(find.byType(MarkerPin), findsNWidgets(2));
+      expect(tester.widget<Badge>(find.byType(Badge)).isLabelVisible, isFalse);
+    });
+
+    testWidgets('adding a marker in a hidden color shows that color again', (
+      tester,
+    ) async {
+      await pumpMap(
+        tester,
+        width: 1000,
+        height: 800,
+        legend: {red: const LegendEntry(name: 'Miasta', hidden: true)},
+      );
+      await tester.longPressAt(tester.getCenter(find.byType(FlutterMap)));
+      await tester.pumpAndSettle();
+      // The editor names the selected (first, red) color.
+      expect(find.text('Miasta'), findsOneWidget);
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Nazwa'),
+        'Oxenfurt',
+      );
+      await tester.tap(find.text('Dodaj'));
+      await tester.pumpAndSettle();
+
+      expect(markerRepo.added.single.$2.label, 'Oxenfurt');
+      expect(legendRepo.hidden, [('map', red, false)]);
+      expect(
+        find.text('Kolor „Miasta” był ukryty filtrem – znów jest widoczny.'),
+        findsOneWidget,
+      );
+    });
   });
 }

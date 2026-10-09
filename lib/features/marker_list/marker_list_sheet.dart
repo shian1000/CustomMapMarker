@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/plural.dart';
 import '../../core/text_search.dart';
 import '../../data/map_marker.dart';
 
@@ -7,21 +8,30 @@ enum MarkerSort { alphabetical, newest }
 
 /// Shows the markers of a map with search and sorting.
 /// Returns the marker the user picked, or null when dismissed.
+///
+/// [hiddenByFilter] is how many more markers the legend filter hides.
 Future<MapMarker?> showMarkerList(
   BuildContext context,
-  List<MapMarker> markers,
-) => showModalBottomSheet<MapMarker>(
+  List<MapMarker> markers, {
+  int hiddenByFilter = 0,
+}) => showModalBottomSheet<MapMarker>(
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
   useSafeArea: true,
-  builder: (_) => MarkerListSheet(markers: markers),
+  builder: (_) =>
+      MarkerListSheet(markers: markers, hiddenByFilter: hiddenByFilter),
 );
 
 class MarkerListSheet extends StatefulWidget {
-  const MarkerListSheet({super.key, required this.markers});
+  const MarkerListSheet({
+    super.key,
+    required this.markers,
+    this.hiddenByFilter = 0,
+  });
 
   final List<MapMarker> markers;
+  final int hiddenByFilter;
 
   @override
   State<MarkerListSheet> createState() => _MarkerListSheetState();
@@ -93,7 +103,13 @@ class _MarkerListSheetState extends State<MarkerListSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    '${visible.length} z ${widget.markers.length}',
+                    [
+                      '${visible.length} z ${widget.markers.length}',
+                      if (widget.hiddenByFilter > 0)
+                        '${widget.hiddenByFilter} '
+                            '${pluralPl(widget.hiddenByFilter, 'ukryty', 'ukryte', 'ukrytych')} '
+                            'filtrem',
+                    ].join(' · '),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -122,10 +138,15 @@ class _MarkerListSheetState extends State<MarkerListSheet> {
             child: visible.isEmpty
                 ? Center(
                     child: Text(
-                      widget.markers.isEmpty
-                          ? 'Na tej mapie nie ma jeszcze znaczników.\n'
-                                'Przytrzymaj palec na mapie, aby dodać.'
-                          : 'Nic nie znaleziono',
+                      switch ((widget.markers.isEmpty, widget.hiddenByFilter)) {
+                        (true, 0) =>
+                          'Na tej mapie nie ma jeszcze znaczników.\n'
+                              'Przytrzymaj palec na mapie, aby dodać.',
+                        (true, _) =>
+                          'Wszystkie znaczniki są ukryte filtrem.\n'
+                              'Zmienisz to w legendzie.',
+                        _ => 'Nic nie znaleziono',
+                      },
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,

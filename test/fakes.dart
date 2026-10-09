@@ -1,9 +1,13 @@
 import 'dart:async';
 
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:custom_map_marker/core/native_tile_renderer.dart';
 import 'package:custom_map_marker/data/image_file_picker.dart';
+import 'package:custom_map_marker/data/legend_repository.dart';
+import 'package:custom_map_marker/data/map_marker.dart';
+import 'package:custom_map_marker/data/marker_repository.dart';
 import 'package:custom_map_marker/data/map_project.dart';
 import 'package:custom_map_marker/data/map_repository.dart';
 
@@ -130,3 +134,73 @@ class FakeNativeTiles implements NativeTileRenderer {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+/// Records legend changes instead of storing them.
+class FakeLegendRepository implements LegendRepository {
+  final names = <(String mapId, int color, String? name)>[];
+  final hidden = <(String mapId, int color, bool hidden)>[];
+
+  @override
+  Future<void> setName(String mapId, int colorValue, String? name) async =>
+      names.add((mapId, colorValue, name));
+
+  @override
+  Future<void> setHidden(String mapId, int colorValue, bool hidden) async =>
+      this.hidden.add((mapId, colorValue, hidden));
+
+  @override
+  Future<void> setAllHidden(
+    String mapId,
+    Iterable<int> colorValues,
+    bool hidden,
+  ) async {
+    for (final c in colorValues) {
+      await setHidden(mapId, c, hidden);
+    }
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Records added markers instead of storing them.
+class FakeMarkerRepository implements MarkerRepository {
+  final added = <(String mapId, MarkerDraft draft)>[];
+
+  @override
+  Future<MapMarker> add(
+    String mapId,
+    Offset position,
+    MarkerDraft draft,
+  ) async {
+    added.add((mapId, draft));
+    return MapMarker(
+      id: 'new',
+      mapId: mapId,
+      x: position.dx,
+      y: position.dy,
+      label: draft.label,
+      colorValue: draft.colorValue,
+      createdAt: DateTime(2026),
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+MapMarker testMarker(
+  String id,
+  String label, {
+  required int color,
+  double x = 0.5,
+  double y = 0.5,
+}) => MapMarker(
+  id: id,
+  mapId: 'map',
+  x: x,
+  y: y,
+  label: label,
+  colorValue: color,
+  createdAt: DateTime(2026),
+);

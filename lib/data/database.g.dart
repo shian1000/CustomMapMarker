@@ -980,11 +980,327 @@ class MarkersCompanion extends UpdateCompanion<MarkerRow> {
   }
 }
 
+class $LegendTable extends Legend with TableInfo<$LegendTable, LegendRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LegendTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _mapIdMeta = const VerificationMeta('mapId');
+  @override
+  late final GeneratedColumn<String> mapId = GeneratedColumn<String>(
+    'map_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES maps (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _colorValueMeta = const VerificationMeta(
+    'colorValue',
+  );
+  @override
+  late final GeneratedColumn<int> colorValue = GeneratedColumn<int>(
+    'color_value',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _hiddenMeta = const VerificationMeta('hidden');
+  @override
+  late final GeneratedColumn<bool> hidden = GeneratedColumn<bool>(
+    'hidden',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("hidden" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [mapId, colorValue, name, hidden];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'legend';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LegendRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('map_id')) {
+      context.handle(
+        _mapIdMeta,
+        mapId.isAcceptableOrUnknown(data['map_id']!, _mapIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_mapIdMeta);
+    }
+    if (data.containsKey('color_value')) {
+      context.handle(
+        _colorValueMeta,
+        colorValue.isAcceptableOrUnknown(data['color_value']!, _colorValueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorValueMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('hidden')) {
+      context.handle(
+        _hiddenMeta,
+        hidden.isAcceptableOrUnknown(data['hidden']!, _hiddenMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {mapId, colorValue};
+  @override
+  LegendRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LegendRow(
+      mapId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}map_id'],
+      )!,
+      colorValue: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}color_value'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      ),
+      hidden: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}hidden'],
+      )!,
+    );
+  }
+
+  @override
+  $LegendTable createAlias(String alias) {
+    return $LegendTable(attachedDatabase, alias);
+  }
+}
+
+class LegendRow extends DataClass implements Insertable<LegendRow> {
+  final String mapId;
+
+  /// ARGB color value, as in [Markers.colorValue].
+  final int colorValue;
+  final String? name;
+  final bool hidden;
+  const LegendRow({
+    required this.mapId,
+    required this.colorValue,
+    this.name,
+    required this.hidden,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['map_id'] = Variable<String>(mapId);
+    map['color_value'] = Variable<int>(colorValue);
+    if (!nullToAbsent || name != null) {
+      map['name'] = Variable<String>(name);
+    }
+    map['hidden'] = Variable<bool>(hidden);
+    return map;
+  }
+
+  LegendCompanion toCompanion(bool nullToAbsent) {
+    return LegendCompanion(
+      mapId: Value(mapId),
+      colorValue: Value(colorValue),
+      name: name == null && nullToAbsent ? const Value.absent() : Value(name),
+      hidden: Value(hidden),
+    );
+  }
+
+  factory LegendRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LegendRow(
+      mapId: serializer.fromJson<String>(json['mapId']),
+      colorValue: serializer.fromJson<int>(json['colorValue']),
+      name: serializer.fromJson<String?>(json['name']),
+      hidden: serializer.fromJson<bool>(json['hidden']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'mapId': serializer.toJson<String>(mapId),
+      'colorValue': serializer.toJson<int>(colorValue),
+      'name': serializer.toJson<String?>(name),
+      'hidden': serializer.toJson<bool>(hidden),
+    };
+  }
+
+  LegendRow copyWith({
+    String? mapId,
+    int? colorValue,
+    Value<String?> name = const Value.absent(),
+    bool? hidden,
+  }) => LegendRow(
+    mapId: mapId ?? this.mapId,
+    colorValue: colorValue ?? this.colorValue,
+    name: name.present ? name.value : this.name,
+    hidden: hidden ?? this.hidden,
+  );
+  LegendRow copyWithCompanion(LegendCompanion data) {
+    return LegendRow(
+      mapId: data.mapId.present ? data.mapId.value : this.mapId,
+      colorValue: data.colorValue.present
+          ? data.colorValue.value
+          : this.colorValue,
+      name: data.name.present ? data.name.value : this.name,
+      hidden: data.hidden.present ? data.hidden.value : this.hidden,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LegendRow(')
+          ..write('mapId: $mapId, ')
+          ..write('colorValue: $colorValue, ')
+          ..write('name: $name, ')
+          ..write('hidden: $hidden')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(mapId, colorValue, name, hidden);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LegendRow &&
+          other.mapId == this.mapId &&
+          other.colorValue == this.colorValue &&
+          other.name == this.name &&
+          other.hidden == this.hidden);
+}
+
+class LegendCompanion extends UpdateCompanion<LegendRow> {
+  final Value<String> mapId;
+  final Value<int> colorValue;
+  final Value<String?> name;
+  final Value<bool> hidden;
+  final Value<int> rowid;
+  const LegendCompanion({
+    this.mapId = const Value.absent(),
+    this.colorValue = const Value.absent(),
+    this.name = const Value.absent(),
+    this.hidden = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LegendCompanion.insert({
+    required String mapId,
+    required int colorValue,
+    this.name = const Value.absent(),
+    this.hidden = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : mapId = Value(mapId),
+       colorValue = Value(colorValue);
+  static Insertable<LegendRow> custom({
+    Expression<String>? mapId,
+    Expression<int>? colorValue,
+    Expression<String>? name,
+    Expression<bool>? hidden,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (mapId != null) 'map_id': mapId,
+      if (colorValue != null) 'color_value': colorValue,
+      if (name != null) 'name': name,
+      if (hidden != null) 'hidden': hidden,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LegendCompanion copyWith({
+    Value<String>? mapId,
+    Value<int>? colorValue,
+    Value<String?>? name,
+    Value<bool>? hidden,
+    Value<int>? rowid,
+  }) {
+    return LegendCompanion(
+      mapId: mapId ?? this.mapId,
+      colorValue: colorValue ?? this.colorValue,
+      name: name ?? this.name,
+      hidden: hidden ?? this.hidden,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (mapId.present) {
+      map['map_id'] = Variable<String>(mapId.value);
+    }
+    if (colorValue.present) {
+      map['color_value'] = Variable<int>(colorValue.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (hidden.present) {
+      map['hidden'] = Variable<bool>(hidden.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LegendCompanion(')
+          ..write('mapId: $mapId, ')
+          ..write('colorValue: $colorValue, ')
+          ..write('name: $name, ')
+          ..write('hidden: $hidden, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $MapsTable maps = $MapsTable(this);
   late final $MarkersTable markers = $MarkersTable(this);
+  late final $LegendTable legend = $LegendTable(this);
   late final Index markersMapId = Index(
     'markers_map_id',
     'CREATE INDEX markers_map_id ON markers (map_id)',
@@ -996,6 +1312,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     maps,
     markers,
+    legend,
     markersMapId,
   ];
   @override
@@ -1006,6 +1323,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('markers', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'maps',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('legend', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -1049,6 +1373,25 @@ final class $$MapsTableReferences
     ).filter((f) => f.mapId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_markersRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$LegendTable, List<LegendRow>> _legendRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.legend,
+    aliasName: 'maps__id__legend__map_id',
+  );
+
+  $$LegendTableProcessedTableManager get legendRefs {
+    final manager = $$LegendTableTableManager(
+      $_db,
+      $_db.legend,
+    ).filter((f) => f.mapId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_legendRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -1114,6 +1457,31 @@ class $$MapsTableFilterComposer extends Composer<_$AppDatabase, $MapsTable> {
           }) => $$MarkersTableFilterComposer(
             $db: $db,
             $table: $db.markers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> legendRefs(
+    Expression<bool> Function($$LegendTableFilterComposer f) f,
+  ) {
+    final $$LegendTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.legend,
+      getReferencedColumn: (t) => t.mapId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LegendTableFilterComposer(
+            $db: $db,
+            $table: $db.legend,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -1224,6 +1592,31 @@ class $$MapsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> legendRefs<T extends Object>(
+    Expression<T> Function($$LegendTableAnnotationComposer a) f,
+  ) {
+    final $$LegendTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.legend,
+      getReferencedColumn: (t) => t.mapId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LegendTableAnnotationComposer(
+            $db: $db,
+            $table: $db.legend,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MapsTableTableManager
@@ -1239,7 +1632,7 @@ class $$MapsTableTableManager
           $$MapsTableUpdateCompanionBuilder,
           (MapRow, $$MapsTableReferences),
           MapRow,
-          PrefetchHooks Function({bool markersRefs})
+          PrefetchHooks Function({bool markersRefs, bool legendRefs})
         > {
   $$MapsTableTableManager(_$AppDatabase db, $MapsTable table)
     : super(
@@ -1300,10 +1693,13 @@ class $$MapsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({markersRefs = false}) {
+          prefetchHooksCallback: ({markersRefs = false, legendRefs = false}) {
             return PrefetchHooks(
               db: db,
-              explicitlyWatchedTables: [if (markersRefs) db.markers],
+              explicitlyWatchedTables: [
+                if (markersRefs) db.markers,
+                if (legendRefs) db.legend,
+              ],
               addJoins: null,
               getPrefetchedDataCallback: (items) async {
                 return [
@@ -1315,6 +1711,18 @@ class $$MapsTableTableManager
                       ),
                       managerFromTypedResult: (p0) =>
                           $$MapsTableReferences(db, table, p0).markersRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.mapId == item.id),
+                      typedResults: items,
+                    ),
+                  if (legendRefs)
+                    await $_getPrefetchedData<MapRow, $MapsTable, LegendRow>(
+                      currentTable: table,
+                      referencedTable: $$MapsTableReferences._legendRefsTable(
+                        db,
+                      ),
+                      managerFromTypedResult: (p0) =>
+                          $$MapsTableReferences(db, table, p0).legendRefs,
                       referencedItemsForCurrentItem: (item, referencedItems) =>
                           referencedItems.where((e) => e.mapId == item.id),
                       typedResults: items,
@@ -1339,7 +1747,7 @@ typedef $$MapsTableProcessedTableManager =
       $$MapsTableUpdateCompanionBuilder,
       (MapRow, $$MapsTableReferences),
       MapRow,
-      PrefetchHooks Function({bool markersRefs})
+      PrefetchHooks Function({bool markersRefs, bool legendRefs})
     >;
 typedef $$MarkersTableCreateCompanionBuilder = MarkersCompanion Function({
   required String id,
@@ -1716,6 +2124,303 @@ typedef $$MarkersTableProcessedTableManager =
       MarkerRow,
       PrefetchHooks Function({bool mapId})
     >;
+typedef $$LegendTableCreateCompanionBuilder = LegendCompanion Function({
+  required String mapId,
+  required int colorValue,
+  Value<String?> name,
+  Value<bool> hidden,
+  Value<int> rowid,
+});
+typedef $$LegendTableUpdateCompanionBuilder = LegendCompanion Function({
+  Value<String> mapId,
+  Value<int> colorValue,
+  Value<String?> name,
+  Value<bool> hidden,
+  Value<int> rowid,
+});
+
+final class $$LegendTableReferences
+    extends BaseReferences<_$AppDatabase, $LegendTable, LegendRow> {
+  $$LegendTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $MapsTable _mapIdTable(_$AppDatabase db) =>
+      db.maps.createAlias('legend__map_id__maps__id');
+
+  $$MapsTableProcessedTableManager get mapId {
+    final $_column = $_itemColumn<String>('map_id')!;
+
+    final manager = $$MapsTableTableManager(
+      $_db,
+      $_db.maps,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_mapIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$LegendTableFilterComposer
+    extends Composer<_$AppDatabase, $LegendTable> {
+  $$LegendTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get colorValue => $composableBuilder(
+    column: $table.colorValue,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get hidden => $composableBuilder(
+    column: $table.hidden,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$MapsTableFilterComposer get mapId {
+    final $$MapsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mapId,
+      referencedTable: $db.maps,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MapsTableFilterComposer(
+            $db: $db,
+            $table: $db.maps,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$LegendTableOrderingComposer
+    extends Composer<_$AppDatabase, $LegendTable> {
+  $$LegendTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get colorValue => $composableBuilder(
+    column: $table.colorValue,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get hidden => $composableBuilder(
+    column: $table.hidden,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$MapsTableOrderingComposer get mapId {
+    final $$MapsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mapId,
+      referencedTable: $db.maps,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MapsTableOrderingComposer(
+            $db: $db,
+            $table: $db.maps,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$LegendTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LegendTable> {
+  $$LegendTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get colorValue => $composableBuilder(
+    column: $table.colorValue,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<bool> get hidden =>
+      $composableBuilder(column: $table.hidden, builder: (column) => column);
+
+  $$MapsTableAnnotationComposer get mapId {
+    final $$MapsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mapId,
+      referencedTable: $db.maps,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MapsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.maps,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$LegendTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LegendTable,
+          LegendRow,
+          $$LegendTableFilterComposer,
+          $$LegendTableOrderingComposer,
+          $$LegendTableAnnotationComposer,
+          $$LegendTableCreateCompanionBuilder,
+          $$LegendTableUpdateCompanionBuilder,
+          (LegendRow, $$LegendTableReferences),
+          LegendRow,
+          PrefetchHooks Function({bool mapId})
+        > {
+  $$LegendTableTableManager(_$AppDatabase db, $LegendTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LegendTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LegendTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LegendTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> mapId = const Value.absent(),
+                Value<int> colorValue = const Value.absent(),
+                Value<String?> name = const Value.absent(),
+                Value<bool> hidden = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LegendCompanion(
+                mapId: mapId,
+                colorValue: colorValue,
+                name: name,
+                hidden: hidden,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String mapId,
+                required int colorValue,
+                Value<String?> name = const Value.absent(),
+                Value<bool> hidden = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LegendCompanion.insert(
+                mapId: mapId,
+                colorValue: colorValue,
+                name: name,
+                hidden: hidden,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$LegendTable, LegendRow>(table),
+                  $$LegendTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({mapId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (mapId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.mapId,
+                        referencedTable: $$LegendTableReferences._mapIdTable(
+                          db,
+                        ),
+                        referencedColumn: $$LegendTableReferences
+                            ._mapIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$LegendTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LegendTable,
+      LegendRow,
+      $$LegendTableFilterComposer,
+      $$LegendTableOrderingComposer,
+      $$LegendTableAnnotationComposer,
+      $$LegendTableCreateCompanionBuilder,
+      $$LegendTableUpdateCompanionBuilder,
+      (LegendRow, $$LegendTableReferences),
+      LegendRow,
+      PrefetchHooks Function({bool mapId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -1723,4 +2428,6 @@ class $AppDatabaseManager {
   $$MapsTableTableManager get maps => $$MapsTableTableManager(_db, _db.maps);
   $$MarkersTableTableManager get markers =>
       $$MarkersTableTableManager(_db, _db.markers);
+  $$LegendTableTableManager get legend =>
+      $$LegendTableTableManager(_db, _db.legend);
 }

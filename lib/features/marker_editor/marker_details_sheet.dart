@@ -6,10 +6,13 @@ enum MarkerAction { edit, move, delete }
 
 /// Shows a marker's details with its actions.
 /// Returns the chosen action, or null when dismissed.
+///
+/// [colorName] is the legend name of the marker's color, if it has one.
 Future<MarkerAction?> showMarkerDetails(
   BuildContext context,
-  MapMarker marker,
-) => showModalBottomSheet<MarkerAction>(
+  MapMarker marker, {
+  String? colorName,
+}) => showModalBottomSheet<MarkerAction>(
   context: context,
   showDragHandle: true,
   builder: (context) {
@@ -29,6 +32,16 @@ Future<MarkerAction?> showMarkerDetails(
               ),
             ],
           ),
+          if (colorName != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 32),
+              child: Text(
+                colorName,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           if (marker.description case final description?) ...[
             const SizedBox(height: 8),
             Text(description, style: theme.textTheme.bodyMedium),

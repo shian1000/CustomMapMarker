@@ -44,13 +44,29 @@ class Markers extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [Maps, Markers])
+/// Per-map names for marker colors and whether markers of that color are
+/// hidden by the filter. Colors without a row have no name and are shown.
+@DataClassName('LegendRow')
+class Legend extends Table {
+  TextColumn get mapId =>
+      text().references(Maps, #id, onDelete: KeyAction.cascade)();
+
+  /// ARGB color value, as in [Markers.colorValue].
+  IntColumn get colorValue => integer()();
+  TextColumn get name => text().nullable()();
+  BoolColumn get hidden => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {mapId, colorValue};
+}
+
+@DriftDatabase(tables: [Maps, Markers, Legend])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
     : super(executor ?? driftDatabase(name: 'custom_map_marker'));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -58,6 +74,9 @@ class AppDatabase extends _$AppDatabase {
       if (from < 2) {
         // Maps imported before tiling existed stay single-image maps.
         await m.addColumn(maps, maps.tileMaxZoom);
+      }
+      if (from < 3) {
+        await m.createTable(legend);
       }
     },
     beforeOpen: (details) async {

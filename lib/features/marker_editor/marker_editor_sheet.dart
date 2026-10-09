@@ -5,20 +5,28 @@ import '../../shared/marker_colors.dart';
 
 /// Shows a bottom sheet for creating or editing a marker.
 /// Returns null when dismissed without saving.
+///
+/// [colorNames] are the map's legend names, shown for the selected color.
 Future<MarkerDraft?> showMarkerEditor(
   BuildContext context, {
   MarkerDraft? initial,
+  Map<int, String> colorNames = const {},
 }) => showModalBottomSheet<MarkerDraft>(
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
-  builder: (_) => MarkerEditorSheet(initial: initial),
+  builder: (_) => MarkerEditorSheet(initial: initial, colorNames: colorNames),
 );
 
 class MarkerEditorSheet extends StatefulWidget {
-  const MarkerEditorSheet({super.key, this.initial});
+  const MarkerEditorSheet({
+    super.key,
+    this.initial,
+    this.colorNames = const {},
+  });
 
   final MarkerDraft? initial;
+  final Map<int, String> colorNames;
 
   @override
   State<MarkerEditorSheet> createState() => _MarkerEditorSheetState();
@@ -101,7 +109,21 @@ class _MarkerEditorSheetState extends State<MarkerEditorSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            Text('Kolor', style: Theme.of(context).textTheme.labelLarge),
+            Row(
+              children: [
+                Text('Kolor', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.colorNames[_colorValue] ?? 'bez nazwy',
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,

@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/native_tile_renderer.dart';
 import 'database.dart';
 import 'image_file_picker.dart';
+import 'legend.dart';
+import 'legend_repository.dart';
 import 'map_marker.dart';
 import 'map_project.dart';
 import 'map_repository.dart';
@@ -45,3 +47,11 @@ final markersProvider = StreamProvider.autoDispose
     .family<List<MapMarker>, String>(
       (ref, mapId) => ref.watch(markerRepositoryProvider).watchMarkers(mapId),
     );
+
+final legendRepositoryProvider = Provider(
+  (ref) => LegendRepository(ref.watch(databaseProvider)),
+);
+
+final legendProvider = StreamProvider.autoDispose.family<MapLegend, String>(
+  (ref, mapId) => ref.watch(legendRepositoryProvider).watchLegend(mapId),
+);

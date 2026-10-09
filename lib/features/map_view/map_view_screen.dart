@@ -11,12 +11,14 @@ import 'package:latlong2/latlong.dart';
 import '../../core/coordinate_mapper.dart';
 import '../../core/native_tile_renderer.dart';
 import '../../core/tile_pyramid.dart';
+import '../../data/legend.dart';
 import '../../data/map_marker.dart';
 import '../../data/map_project.dart';
 import '../../data/marker_repository.dart';
 import '../../data/providers.dart';
 import '../../shared/widgets/marker_pin.dart';
 import '../marker_editor/marker_details_sheet.dart';
+import '../legend/legend_sheet.dart';
 import '../maps_list/map_dialogs.dart';
 import '../marker_list/marker_list_sheet.dart';
 import '../marker_editor/marker_editor_sheet.dart';
@@ -92,8 +94,15 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
     await ref.read(mapRepositoryProvider).rename(widget.project.id, name);
   }
 
-  Future<void> _openMarkerList(List<MapMarker> markers) async {
-    final marker = await showMarkerList(context, markers);
+  Future<void> _openMarkerList(
+    List<MapMarker> markers, {
+    required int hiddenByFilter,
+  }) async {
+    final marker = await showMarkerList(
+      context,
+      markers,
+      hiddenByFilter: hiddenByFilter,
+    );
     if (marker == null || !mounted) return;
     await _flyTo(_mapper.toLatLng(Offset(marker.x, marker.y)));
     if (!mounted) return;
@@ -141,6 +150,25 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
 
   static double _lerp(double a, double b, double t) => a + (b - a) * t;
 
+  MapLegend get _legend =>
+      ref.read(legendProvider(widget.project.id)).value ?? const {};
+
+  /// A marker just given a color that the filter hides would vanish as soon
+  /// as it's saved; show that color again instead and say so.
+  Future<void> _revealColor(int colorValue) async {
+    if (!_legend.isHidden(colorValue)) return;
+    await ref
+        .read(legendRepositoryProvider)
+        .setHidden(widget.project.id, colorValue, false);
+    if (!mounted) return;
+    final name = _legend.nameOf(colorValue);
+    _showMessage(
+      name == null
+          ? 'Ten kolor był ukryty filtrem – znów jest widoczny.'
+          : 'Kolor „$name” był ukryty filtrem – znów jest widoczny.',
+    );
+  }
+
   void _zoomBy(double delta) {
     final camera = _controller.camera;
     _controller.move(camera.center, camera.zoom + delta);
@@ -159,9 +187,10 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
       return;
     }
     HapticFeedback.mediumImpact();
-    final draft = await showMarkerEditor(context);
+    final draft = await showMarkerEditor(context, colorNames: _legend.names);
     if (draft == null) return;
     await _markers.add(widget.project.id, _mapper.toNormalized(point), draft);
+    await _revealColor(draft.colorValue);
   }
 
   Future<void> _onTap(TapPosition _, LatLng point) async {
@@ -177,20 +206,27 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
 
   Future<void> _onMarkerTap(MapMarker marker) async {
     if (_moving != null) return;
-    final action = await showMarkerDetails(context, marker);
+    final action = await showMarkerDetails(
+      context,
+      marker,
+      colorName: _legend.nameOf(marker.colorValue),
+    );
     if (!mounted || action == null) return;
 
     switch (action) {
       case MarkerAction.edit:
         final draft = await showMarkerEditor(
           context,
+          colorNames: _legend.names,
           initial: MarkerDraft(
             label: marker.label,
             description: marker.description,
             colorValue: marker.colorValue,
           ),
         );
-        if (draft != null) await _markers.edit(marker.id, draft);
+        if (draft == null) return;
+        await _markers.edit(marker.id, draft);
+        await _revealColor(draft.colorValue);
       case MarkerAction.move:
         setState(() => _moving = marker);
       case MarkerAction.delete:
@@ -255,8 +291,15 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
             ?.map
             .name ??
         widget.project.name;
-    final markers =
+    final legend =
+        ref.watch(legendProvider(widget.project.id)).value ?? const {};
+    final allMarkers =
         ref.watch(markersProvider(widget.project.id)).value ?? const [];
+    final markers = [
+      for (final m in allMarkers)
+        if (!legend.isHidden(m.colorValue)) m,
+    ];
+    final hiddenByFilter = allMarkers.length - markers.length;
     final moving = _moving;
 
     return Scaffold(
@@ -264,8 +307,19 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
         title: Text(name),
         actions: [
           IconButton(
+            tooltip: 'Legenda i filtr',
+            onPressed: () => showLegendSheet(context, widget.project.id),
+            icon: Badge(
+              // Dot when the filter hides something.
+              isLabelVisible: hiddenByFilter > 0,
+              child: const Icon(Icons.filter_alt_outlined),
+            ),
+          ),
+          IconButton(
             tooltip: 'Lista znaczników',
-            onPressed: moving == null ? () => _openMarkerList(markers) : null,
+            onPressed: moving == null
+                ? () => _openMarkerList(markers, hiddenByFilter: hiddenByFilter)
+                : null,
             icon: const Icon(Icons.format_list_bulleted),
           ),
           IconButton(

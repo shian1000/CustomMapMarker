@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:custom_map_marker/data/database.dart';
+import 'package:custom_map_marker/data/legend.dart';
+import 'package:custom_map_marker/data/legend_repository.dart';
 import 'package:custom_map_marker/data/map_marker.dart';
 import 'package:custom_map_marker/data/map_project.dart';
 import 'package:custom_map_marker/data/map_repository.dart';
@@ -18,6 +20,7 @@ void main() {
   late Directory docs;
   late MapRepository maps;
   late MarkerRepository markers;
+  late LegendRepository legend;
 
   const draft = MarkerDraft(label: 'Zamek', colorValue: 0xFFE53935);
 
@@ -29,6 +32,7 @@ void main() {
     // Low threshold so a small test image gets tiled when wanted.
     maps = MapRepository(db, docs, tilingThresholdPx: 300);
     markers = MarkerRepository(db);
+    legend = LegendRepository(db);
   });
 
   tearDown(() async {
@@ -255,6 +259,52 @@ void main() {
         expect(File(p.join(map.tilesDir, '0', '0', '0')).existsSync(), isTrue);
       },
     );
+  });
+
+  group('LegendRepository', () {
+    const red = 0xFFE53935;
+    const green = 0xFF43A047;
+
+    test('names colors per map and clears blank names', () async {
+      final a = await importTestMap();
+      final b = await importTestMap();
+      await legend.setName(a, red, '  Zamki ');
+      expect((await legend.watchLegend(a).first).nameOf(red), 'Zamki');
+      expect(await legend.watchLegend(b).first, isEmpty);
+
+      await legend.setName(a, red, '   ');
+      expect((await legend.watchLegend(a).first).nameOf(red), isNull);
+    });
+
+    test('hiding keeps the name and naming keeps it hidden', () async {
+      final id = await importTestMap();
+      await legend.setName(id, red, 'Zamki');
+      await legend.setHidden(id, red, true);
+      var l = await legend.watchLegend(id).first;
+      expect((l.nameOf(red), l.isHidden(red)), ('Zamki', true));
+
+      await legend.setName(id, red, 'Twierdze');
+      l = await legend.watchLegend(id).first;
+      expect((l.nameOf(red), l.isHidden(red)), ('Twierdze', true));
+      expect(l.hasHidden, isTrue);
+    });
+
+    test('shows or hides many colors at once', () async {
+      final id = await importTestMap();
+      await legend.setAllHidden(id, [red, green], true);
+      var l = await legend.watchLegend(id).first;
+      expect((l.isHidden(red), l.isHidden(green)), (true, true));
+      await legend.setAllHidden(id, [red, green], false);
+      l = await legend.watchLegend(id).first;
+      expect(l.hasHidden, isFalse);
+    });
+
+    test('is deleted with its map', () async {
+      final id = await importTestMap();
+      await legend.setName(id, red, 'Zamki');
+      await maps.delete(id);
+      expect(await db.select(db.legend).get(), isEmpty);
+    });
   });
 
   group('MarkerRepository', () {
