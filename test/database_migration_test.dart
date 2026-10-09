@@ -43,7 +43,7 @@ void main() {
         (marker.label, marker.x, marker.colorValue),
         ('Novigrad', 0.5, 4293212469),
       );
-      expect(raw.userVersion, 4);
+      expect(raw.userVersion, 5);
       await db
           .into(db.legend)
           .insert(
@@ -54,6 +54,7 @@ void main() {
             ),
           );
       expect((await db.select(db.legend).getSingle()).name, 'Zamki');
+      expect(await db.select(db.shapes).get(), isEmpty);
     },
   );
 
@@ -82,6 +83,6 @@ void main() {
 
     expect((await db.select(db.maps).getSingle()).tileMaxZoom, 5);
     expect(await db.select(db.legend).get(), isEmpty);
-    expect(raw.userVersion, 4);
+    expect(raw.userVersion, 5);
   });
 }

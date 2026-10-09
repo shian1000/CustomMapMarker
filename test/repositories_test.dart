@@ -5,6 +5,8 @@ import 'package:custom_map_marker/data/legend.dart';
 import 'package:custom_map_marker/data/legend_repository.dart';
 import 'package:custom_map_marker/data/map_marker.dart';
 import 'package:custom_map_marker/data/map_project.dart';
+import 'package:custom_map_marker/data/map_shape.dart';
+import 'package:custom_map_marker/data/shape_repository.dart';
 import 'package:custom_map_marker/data/map_repository.dart';
 import 'package:custom_map_marker/data/marker_repository.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -21,6 +23,7 @@ void main() {
   late MapRepository maps;
   late MarkerRepository markers;
   late LegendRepository legend;
+  late ShapeRepository shapes;
 
   const draft = MarkerDraft(label: 'Zamek', colorValue: 0xFFE53935);
 
@@ -33,6 +36,7 @@ void main() {
     maps = MapRepository(db, docs, tilingThresholdPx: 300);
     markers = MarkerRepository(db);
     legend = LegendRepository(db);
+    shapes = ShapeRepository(db);
   });
 
   tearDown(() async {
@@ -259,6 +263,67 @@ void main() {
         expect(File(p.join(map.tilesDir, '0', '0', '0')).existsSync(), isTrue);
       },
     );
+  });
+
+  group('ShapeRepository', () {
+    const style = ShapeStyle(
+      name: 'Szlak',
+      description: 'Przez las',
+      colorValue: 0xFF1E88E5,
+      width: ShapeWidth.thick,
+      dashed: true,
+      fillOpacity: 0.45,
+    );
+    const route = [Offset(0.1, 0.2), Offset(0.3, 0.4), Offset(0.9, 0.95)];
+
+    test('stores points and style', () async {
+      final mapId = await importTestMap();
+      await shapes.add(mapId, ShapeKind.route, route, style);
+      final s = (await shapes.watchShapes(mapId).first).single;
+      expect(s.kind, ShapeKind.route);
+      expect(s.points, route);
+      expect(
+        (
+          s.name,
+          s.style.description,
+          s.colorValue,
+          s.style.width,
+          s.style.dashed,
+          s.style.fillOpacity,
+        ),
+        ('Szlak', 'Przez las', 0xFF1E88E5, ShapeWidth.thick, true, 0.45),
+      );
+    });
+
+    test('rejects shapes with too few points', () async {
+      final mapId = await importTestMap();
+      expect(
+        () => shapes.add(mapId, ShapeKind.area, route.take(2).toList(), style),
+        throwsArgumentError,
+      );
+      expect(
+        () => shapes.add(mapId, ShapeKind.route, route.take(1).toList(), style),
+        throwsArgumentError,
+      );
+    });
+
+    test('keeps maps apart, removes and restores', () async {
+      final a = await importTestMap();
+      final b = await importTestMap();
+      final s = await shapes.add(a, ShapeKind.area, route, style);
+      expect(await shapes.watchShapes(b).first, isEmpty);
+      await shapes.remove(s.id);
+      expect(await shapes.watchShapes(a).first, isEmpty);
+      await shapes.restore(s);
+      expect((await shapes.watchShapes(a).first).single.id, s.id);
+    });
+
+    test('is deleted with its map', () async {
+      final mapId = await importTestMap();
+      await shapes.add(mapId, ShapeKind.route, route, style);
+      await maps.delete(mapId);
+      expect(await db.select(db.shapes).get(), isEmpty);
+    });
   });
 
   group('LegendRepository', () {

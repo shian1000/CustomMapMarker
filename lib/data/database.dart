@@ -63,13 +63,44 @@ class Legend extends Table {
   Set<Column> get primaryKey => {mapId, colorValue};
 }
 
-@DriftDatabase(tables: [Maps, Markers, Legend])
+/// Routes (open lines) and areas (closed, filled polygons) drawn on a map.
+@DataClassName('ShapeRow')
+@TableIndex(name: 'shapes_map_id', columns: {#mapId})
+class Shapes extends Table {
+  TextColumn get id => text()();
+  TextColumn get mapId =>
+      text().references(Maps, #id, onDelete: KeyAction.cascade)();
+
+  /// `route` or `area`.
+  TextColumn get kind => text()();
+  TextColumn get name => text().nullable()();
+  TextColumn get description => text().nullable()();
+
+  /// ARGB color value, shared with the legend like markers' colors.
+  IntColumn get colorValue => integer()();
+
+  /// Line width: 0 thin, 1 medium, 2 thick.
+  IntColumn get strokeWidth => integer().withDefault(const Constant(1))();
+  BoolColumn get dashed => boolean().withDefault(const Constant(false))();
+
+  /// Fill opacity of areas, 0..1.
+  RealColumn get fillOpacity => real().withDefault(const Constant(0.3))();
+
+  /// JSON list of [x, y] pairs normalized to the image (0..1).
+  TextColumn get points => text()();
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DriftDatabase(tables: [Maps, Markers, Legend, Shapes])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
     : super(executor ?? driftDatabase(name: 'custom_map_marker'));
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -83,6 +114,10 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 4) {
         await m.addColumn(markers, markers.icon);
+      }
+      if (from < 5) {
+        await m.createTable(shapes);
+        await m.createIndex(shapesMapId);
       }
     },
     beforeOpen: (details) async {

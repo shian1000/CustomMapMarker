@@ -1350,15 +1350,692 @@ class LegendCompanion extends UpdateCompanion<LegendRow> {
   }
 }
 
+class $ShapesTable extends Shapes with TableInfo<$ShapesTable, ShapeRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ShapesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _mapIdMeta = const VerificationMeta('mapId');
+  @override
+  late final GeneratedColumn<String> mapId = GeneratedColumn<String>(
+    'map_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES maps (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _colorValueMeta = const VerificationMeta(
+    'colorValue',
+  );
+  @override
+  late final GeneratedColumn<int> colorValue = GeneratedColumn<int>(
+    'color_value',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _strokeWidthMeta = const VerificationMeta(
+    'strokeWidth',
+  );
+  @override
+  late final GeneratedColumn<int> strokeWidth = GeneratedColumn<int>(
+    'stroke_width',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _dashedMeta = const VerificationMeta('dashed');
+  @override
+  late final GeneratedColumn<bool> dashed = GeneratedColumn<bool>(
+    'dashed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dashed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _fillOpacityMeta = const VerificationMeta(
+    'fillOpacity',
+  );
+  @override
+  late final GeneratedColumn<double> fillOpacity = GeneratedColumn<double>(
+    'fill_opacity',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0.3),
+  );
+  static const VerificationMeta _pointsMeta = const VerificationMeta('points');
+  @override
+  late final GeneratedColumn<String> points = GeneratedColumn<String>(
+    'points',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    mapId,
+    kind,
+    name,
+    description,
+    colorValue,
+    strokeWidth,
+    dashed,
+    fillOpacity,
+    points,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'shapes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ShapeRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('map_id')) {
+      context.handle(
+        _mapIdMeta,
+        mapId.isAcceptableOrUnknown(data['map_id']!, _mapIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_mapIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('color_value')) {
+      context.handle(
+        _colorValueMeta,
+        colorValue.isAcceptableOrUnknown(data['color_value']!, _colorValueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorValueMeta);
+    }
+    if (data.containsKey('stroke_width')) {
+      context.handle(
+        _strokeWidthMeta,
+        strokeWidth.isAcceptableOrUnknown(
+          data['stroke_width']!,
+          _strokeWidthMeta,
+        ),
+      );
+    }
+    if (data.containsKey('dashed')) {
+      context.handle(
+        _dashedMeta,
+        dashed.isAcceptableOrUnknown(data['dashed']!, _dashedMeta),
+      );
+    }
+    if (data.containsKey('fill_opacity')) {
+      context.handle(
+        _fillOpacityMeta,
+        fillOpacity.isAcceptableOrUnknown(
+          data['fill_opacity']!,
+          _fillOpacityMeta,
+        ),
+      );
+    }
+    if (data.containsKey('points')) {
+      context.handle(
+        _pointsMeta,
+        points.isAcceptableOrUnknown(data['points']!, _pointsMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pointsMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ShapeRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ShapeRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      mapId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}map_id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      ),
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      ),
+      colorValue: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}color_value'],
+      )!,
+      strokeWidth: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}stroke_width'],
+      )!,
+      dashed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dashed'],
+      )!,
+      fillOpacity: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}fill_opacity'],
+      )!,
+      points: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}points'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ShapesTable createAlias(String alias) {
+    return $ShapesTable(attachedDatabase, alias);
+  }
+}
+
+class ShapeRow extends DataClass implements Insertable<ShapeRow> {
+  final String id;
+  final String mapId;
+
+  /// `route` or `area`.
+  final String kind;
+  final String? name;
+  final String? description;
+
+  /// ARGB color value, shared with the legend like markers' colors.
+  final int colorValue;
+
+  /// Line width: 0 thin, 1 medium, 2 thick.
+  final int strokeWidth;
+  final bool dashed;
+
+  /// Fill opacity of areas, 0..1.
+  final double fillOpacity;
+
+  /// JSON list of [x, y] pairs normalized to the image (0..1).
+  final String points;
+  final DateTime createdAt;
+  const ShapeRow({
+    required this.id,
+    required this.mapId,
+    required this.kind,
+    this.name,
+    this.description,
+    required this.colorValue,
+    required this.strokeWidth,
+    required this.dashed,
+    required this.fillOpacity,
+    required this.points,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['map_id'] = Variable<String>(mapId);
+    map['kind'] = Variable<String>(kind);
+    if (!nullToAbsent || name != null) {
+      map['name'] = Variable<String>(name);
+    }
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    map['color_value'] = Variable<int>(colorValue);
+    map['stroke_width'] = Variable<int>(strokeWidth);
+    map['dashed'] = Variable<bool>(dashed);
+    map['fill_opacity'] = Variable<double>(fillOpacity);
+    map['points'] = Variable<String>(points);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  ShapesCompanion toCompanion(bool nullToAbsent) {
+    return ShapesCompanion(
+      id: Value(id),
+      mapId: Value(mapId),
+      kind: Value(kind),
+      name: name == null && nullToAbsent ? const Value.absent() : Value(name),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      colorValue: Value(colorValue),
+      strokeWidth: Value(strokeWidth),
+      dashed: Value(dashed),
+      fillOpacity: Value(fillOpacity),
+      points: Value(points),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory ShapeRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ShapeRow(
+      id: serializer.fromJson<String>(json['id']),
+      mapId: serializer.fromJson<String>(json['mapId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      name: serializer.fromJson<String?>(json['name']),
+      description: serializer.fromJson<String?>(json['description']),
+      colorValue: serializer.fromJson<int>(json['colorValue']),
+      strokeWidth: serializer.fromJson<int>(json['strokeWidth']),
+      dashed: serializer.fromJson<bool>(json['dashed']),
+      fillOpacity: serializer.fromJson<double>(json['fillOpacity']),
+      points: serializer.fromJson<String>(json['points']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'mapId': serializer.toJson<String>(mapId),
+      'kind': serializer.toJson<String>(kind),
+      'name': serializer.toJson<String?>(name),
+      'description': serializer.toJson<String?>(description),
+      'colorValue': serializer.toJson<int>(colorValue),
+      'strokeWidth': serializer.toJson<int>(strokeWidth),
+      'dashed': serializer.toJson<bool>(dashed),
+      'fillOpacity': serializer.toJson<double>(fillOpacity),
+      'points': serializer.toJson<String>(points),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  ShapeRow copyWith({
+    String? id,
+    String? mapId,
+    String? kind,
+    Value<String?> name = const Value.absent(),
+    Value<String?> description = const Value.absent(),
+    int? colorValue,
+    int? strokeWidth,
+    bool? dashed,
+    double? fillOpacity,
+    String? points,
+    DateTime? createdAt,
+  }) => ShapeRow(
+    id: id ?? this.id,
+    mapId: mapId ?? this.mapId,
+    kind: kind ?? this.kind,
+    name: name.present ? name.value : this.name,
+    description: description.present ? description.value : this.description,
+    colorValue: colorValue ?? this.colorValue,
+    strokeWidth: strokeWidth ?? this.strokeWidth,
+    dashed: dashed ?? this.dashed,
+    fillOpacity: fillOpacity ?? this.fillOpacity,
+    points: points ?? this.points,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  ShapeRow copyWithCompanion(ShapesCompanion data) {
+    return ShapeRow(
+      id: data.id.present ? data.id.value : this.id,
+      mapId: data.mapId.present ? data.mapId.value : this.mapId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      name: data.name.present ? data.name.value : this.name,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      colorValue: data.colorValue.present
+          ? data.colorValue.value
+          : this.colorValue,
+      strokeWidth: data.strokeWidth.present
+          ? data.strokeWidth.value
+          : this.strokeWidth,
+      dashed: data.dashed.present ? data.dashed.value : this.dashed,
+      fillOpacity: data.fillOpacity.present
+          ? data.fillOpacity.value
+          : this.fillOpacity,
+      points: data.points.present ? data.points.value : this.points,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ShapeRow(')
+          ..write('id: $id, ')
+          ..write('mapId: $mapId, ')
+          ..write('kind: $kind, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('colorValue: $colorValue, ')
+          ..write('strokeWidth: $strokeWidth, ')
+          ..write('dashed: $dashed, ')
+          ..write('fillOpacity: $fillOpacity, ')
+          ..write('points: $points, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    mapId,
+    kind,
+    name,
+    description,
+    colorValue,
+    strokeWidth,
+    dashed,
+    fillOpacity,
+    points,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ShapeRow &&
+          other.id == this.id &&
+          other.mapId == this.mapId &&
+          other.kind == this.kind &&
+          other.name == this.name &&
+          other.description == this.description &&
+          other.colorValue == this.colorValue &&
+          other.strokeWidth == this.strokeWidth &&
+          other.dashed == this.dashed &&
+          other.fillOpacity == this.fillOpacity &&
+          other.points == this.points &&
+          other.createdAt == this.createdAt);
+}
+
+class ShapesCompanion extends UpdateCompanion<ShapeRow> {
+  final Value<String> id;
+  final Value<String> mapId;
+  final Value<String> kind;
+  final Value<String?> name;
+  final Value<String?> description;
+  final Value<int> colorValue;
+  final Value<int> strokeWidth;
+  final Value<bool> dashed;
+  final Value<double> fillOpacity;
+  final Value<String> points;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const ShapesCompanion({
+    this.id = const Value.absent(),
+    this.mapId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.name = const Value.absent(),
+    this.description = const Value.absent(),
+    this.colorValue = const Value.absent(),
+    this.strokeWidth = const Value.absent(),
+    this.dashed = const Value.absent(),
+    this.fillOpacity = const Value.absent(),
+    this.points = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ShapesCompanion.insert({
+    required String id,
+    required String mapId,
+    required String kind,
+    this.name = const Value.absent(),
+    this.description = const Value.absent(),
+    required int colorValue,
+    this.strokeWidth = const Value.absent(),
+    this.dashed = const Value.absent(),
+    this.fillOpacity = const Value.absent(),
+    required String points,
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       mapId = Value(mapId),
+       kind = Value(kind),
+       colorValue = Value(colorValue),
+       points = Value(points),
+       createdAt = Value(createdAt);
+  static Insertable<ShapeRow> custom({
+    Expression<String>? id,
+    Expression<String>? mapId,
+    Expression<String>? kind,
+    Expression<String>? name,
+    Expression<String>? description,
+    Expression<int>? colorValue,
+    Expression<int>? strokeWidth,
+    Expression<bool>? dashed,
+    Expression<double>? fillOpacity,
+    Expression<String>? points,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (mapId != null) 'map_id': mapId,
+      if (kind != null) 'kind': kind,
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (colorValue != null) 'color_value': colorValue,
+      if (strokeWidth != null) 'stroke_width': strokeWidth,
+      if (dashed != null) 'dashed': dashed,
+      if (fillOpacity != null) 'fill_opacity': fillOpacity,
+      if (points != null) 'points': points,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ShapesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? mapId,
+    Value<String>? kind,
+    Value<String?>? name,
+    Value<String?>? description,
+    Value<int>? colorValue,
+    Value<int>? strokeWidth,
+    Value<bool>? dashed,
+    Value<double>? fillOpacity,
+    Value<String>? points,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return ShapesCompanion(
+      id: id ?? this.id,
+      mapId: mapId ?? this.mapId,
+      kind: kind ?? this.kind,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      colorValue: colorValue ?? this.colorValue,
+      strokeWidth: strokeWidth ?? this.strokeWidth,
+      dashed: dashed ?? this.dashed,
+      fillOpacity: fillOpacity ?? this.fillOpacity,
+      points: points ?? this.points,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (mapId.present) {
+      map['map_id'] = Variable<String>(mapId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (colorValue.present) {
+      map['color_value'] = Variable<int>(colorValue.value);
+    }
+    if (strokeWidth.present) {
+      map['stroke_width'] = Variable<int>(strokeWidth.value);
+    }
+    if (dashed.present) {
+      map['dashed'] = Variable<bool>(dashed.value);
+    }
+    if (fillOpacity.present) {
+      map['fill_opacity'] = Variable<double>(fillOpacity.value);
+    }
+    if (points.present) {
+      map['points'] = Variable<String>(points.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ShapesCompanion(')
+          ..write('id: $id, ')
+          ..write('mapId: $mapId, ')
+          ..write('kind: $kind, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('colorValue: $colorValue, ')
+          ..write('strokeWidth: $strokeWidth, ')
+          ..write('dashed: $dashed, ')
+          ..write('fillOpacity: $fillOpacity, ')
+          ..write('points: $points, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $MapsTable maps = $MapsTable(this);
   late final $MarkersTable markers = $MarkersTable(this);
   late final $LegendTable legend = $LegendTable(this);
+  late final $ShapesTable shapes = $ShapesTable(this);
   late final Index markersMapId = Index(
     'markers_map_id',
     'CREATE INDEX markers_map_id ON markers (map_id)',
+  );
+  late final Index shapesMapId = Index(
+    'shapes_map_id',
+    'CREATE INDEX shapes_map_id ON shapes (map_id)',
   );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -1368,7 +2045,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     maps,
     markers,
     legend,
+    shapes,
     markersMapId,
+    shapesMapId,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -1385,6 +2064,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('legend', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'maps',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('shapes', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -1447,6 +2133,25 @@ final class $$MapsTableReferences
     ).filter((f) => f.mapId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_legendRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ShapesTable, List<ShapeRow>> _shapesRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.shapes,
+    aliasName: 'maps__id__shapes__map_id',
+  );
+
+  $$ShapesTableProcessedTableManager get shapesRefs {
+    final manager = $$ShapesTableTableManager(
+      $_db,
+      $_db.shapes,
+    ).filter((f) => f.mapId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_shapesRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -1537,6 +2242,31 @@ class $$MapsTableFilterComposer extends Composer<_$AppDatabase, $MapsTable> {
           }) => $$LegendTableFilterComposer(
             $db: $db,
             $table: $db.legend,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> shapesRefs(
+    Expression<bool> Function($$ShapesTableFilterComposer f) f,
+  ) {
+    final $$ShapesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.shapes,
+      getReferencedColumn: (t) => t.mapId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ShapesTableFilterComposer(
+            $db: $db,
+            $table: $db.shapes,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -1672,6 +2402,31 @@ class $$MapsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> shapesRefs<T extends Object>(
+    Expression<T> Function($$ShapesTableAnnotationComposer a) f,
+  ) {
+    final $$ShapesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.shapes,
+      getReferencedColumn: (t) => t.mapId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ShapesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.shapes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MapsTableTableManager
@@ -1687,7 +2442,11 @@ class $$MapsTableTableManager
           $$MapsTableUpdateCompanionBuilder,
           (MapRow, $$MapsTableReferences),
           MapRow,
-          PrefetchHooks Function({bool markersRefs, bool legendRefs})
+          PrefetchHooks Function({
+            bool markersRefs,
+            bool legendRefs,
+            bool shapesRefs,
+          })
         > {
   $$MapsTableTableManager(_$AppDatabase db, $MapsTable table)
     : super(
@@ -1748,44 +2507,69 @@ class $$MapsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({markersRefs = false, legendRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (markersRefs) db.markers,
-                if (legendRefs) db.legend,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (markersRefs)
-                    await $_getPrefetchedData<MapRow, $MapsTable, MarkerRow>(
-                      currentTable: table,
-                      referencedTable: $$MapsTableReferences._markersRefsTable(
-                        db,
-                      ),
-                      managerFromTypedResult: (p0) =>
-                          $$MapsTableReferences(db, table, p0).markersRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.mapId == item.id),
-                      typedResults: items,
-                    ),
-                  if (legendRefs)
-                    await $_getPrefetchedData<MapRow, $MapsTable, LegendRow>(
-                      currentTable: table,
-                      referencedTable: $$MapsTableReferences._legendRefsTable(
-                        db,
-                      ),
-                      managerFromTypedResult: (p0) =>
-                          $$MapsTableReferences(db, table, p0).legendRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.mapId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({markersRefs = false, legendRefs = false, shapesRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (markersRefs) db.markers,
+                    if (legendRefs) db.legend,
+                    if (shapesRefs) db.shapes,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (markersRefs)
+                        await $_getPrefetchedData<
+                          MapRow,
+                          $MapsTable,
+                          MarkerRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MapsTableReferences
+                              ._markersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MapsTableReferences(db, table, p0).markersRefs,
+                          referencedItemsForCurrentItem: (
+                            item,
+                            referencedItems,
+                          ) => referencedItems.where((e) => e.mapId == item.id),
+                          typedResults: items,
+                        ),
+                      if (legendRefs)
+                        await $_getPrefetchedData<
+                          MapRow,
+                          $MapsTable,
+                          LegendRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MapsTableReferences
+                              ._legendRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MapsTableReferences(db, table, p0).legendRefs,
+                          referencedItemsForCurrentItem: (
+                            item,
+                            referencedItems,
+                          ) => referencedItems.where((e) => e.mapId == item.id),
+                          typedResults: items,
+                        ),
+                      if (shapesRefs)
+                        await $_getPrefetchedData<MapRow, $MapsTable, ShapeRow>(
+                          currentTable: table,
+                          referencedTable: $$MapsTableReferences
+                              ._shapesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MapsTableReferences(db, table, p0).shapesRefs,
+                          referencedItemsForCurrentItem: (
+                            item,
+                            referencedItems,
+                          ) => referencedItems.where((e) => e.mapId == item.id),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -1802,7 +2586,11 @@ typedef $$MapsTableProcessedTableManager =
       $$MapsTableUpdateCompanionBuilder,
       (MapRow, $$MapsTableReferences),
       MapRow,
-      PrefetchHooks Function({bool markersRefs, bool legendRefs})
+      PrefetchHooks Function({
+        bool markersRefs,
+        bool legendRefs,
+        bool shapesRefs,
+      })
     >;
 typedef $$MarkersTableCreateCompanionBuilder = MarkersCompanion Function({
   required String id,
@@ -2495,6 +3283,442 @@ typedef $$LegendTableProcessedTableManager =
       LegendRow,
       PrefetchHooks Function({bool mapId})
     >;
+typedef $$ShapesTableCreateCompanionBuilder = ShapesCompanion Function({
+  required String id,
+  required String mapId,
+  required String kind,
+  Value<String?> name,
+  Value<String?> description,
+  required int colorValue,
+  Value<int> strokeWidth,
+  Value<bool> dashed,
+  Value<double> fillOpacity,
+  required String points,
+  required DateTime createdAt,
+  Value<int> rowid,
+});
+typedef $$ShapesTableUpdateCompanionBuilder = ShapesCompanion Function({
+  Value<String> id,
+  Value<String> mapId,
+  Value<String> kind,
+  Value<String?> name,
+  Value<String?> description,
+  Value<int> colorValue,
+  Value<int> strokeWidth,
+  Value<bool> dashed,
+  Value<double> fillOpacity,
+  Value<String> points,
+  Value<DateTime> createdAt,
+  Value<int> rowid,
+});
+
+final class $$ShapesTableReferences
+    extends BaseReferences<_$AppDatabase, $ShapesTable, ShapeRow> {
+  $$ShapesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $MapsTable _mapIdTable(_$AppDatabase db) =>
+      db.maps.createAlias('shapes__map_id__maps__id');
+
+  $$MapsTableProcessedTableManager get mapId {
+    final $_column = $_itemColumn<String>('map_id')!;
+
+    final manager = $$MapsTableTableManager(
+      $_db,
+      $_db.maps,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_mapIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ShapesTableFilterComposer
+    extends Composer<_$AppDatabase, $ShapesTable> {
+  $$ShapesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get colorValue => $composableBuilder(
+    column: $table.colorValue,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get strokeWidth => $composableBuilder(
+    column: $table.strokeWidth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dashed => $composableBuilder(
+    column: $table.dashed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get fillOpacity => $composableBuilder(
+    column: $table.fillOpacity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get points => $composableBuilder(
+    column: $table.points,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$MapsTableFilterComposer get mapId {
+    final $$MapsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mapId,
+      referencedTable: $db.maps,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MapsTableFilterComposer(
+            $db: $db,
+            $table: $db.maps,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ShapesTableOrderingComposer
+    extends Composer<_$AppDatabase, $ShapesTable> {
+  $$ShapesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get colorValue => $composableBuilder(
+    column: $table.colorValue,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get strokeWidth => $composableBuilder(
+    column: $table.strokeWidth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get dashed => $composableBuilder(
+    column: $table.dashed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get fillOpacity => $composableBuilder(
+    column: $table.fillOpacity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get points => $composableBuilder(
+    column: $table.points,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$MapsTableOrderingComposer get mapId {
+    final $$MapsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mapId,
+      referencedTable: $db.maps,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MapsTableOrderingComposer(
+            $db: $db,
+            $table: $db.maps,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ShapesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ShapesTable> {
+  $$ShapesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get colorValue => $composableBuilder(
+    column: $table.colorValue,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get strokeWidth => $composableBuilder(
+    column: $table.strokeWidth,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get dashed =>
+      $composableBuilder(column: $table.dashed, builder: (column) => column);
+
+  GeneratedColumn<double> get fillOpacity => $composableBuilder(
+    column: $table.fillOpacity,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get points =>
+      $composableBuilder(column: $table.points, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$MapsTableAnnotationComposer get mapId {
+    final $$MapsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mapId,
+      referencedTable: $db.maps,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MapsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.maps,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ShapesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ShapesTable,
+          ShapeRow,
+          $$ShapesTableFilterComposer,
+          $$ShapesTableOrderingComposer,
+          $$ShapesTableAnnotationComposer,
+          $$ShapesTableCreateCompanionBuilder,
+          $$ShapesTableUpdateCompanionBuilder,
+          (ShapeRow, $$ShapesTableReferences),
+          ShapeRow,
+          PrefetchHooks Function({bool mapId})
+        > {
+  $$ShapesTableTableManager(_$AppDatabase db, $ShapesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ShapesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ShapesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ShapesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> mapId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String?> name = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<int> colorValue = const Value.absent(),
+                Value<int> strokeWidth = const Value.absent(),
+                Value<bool> dashed = const Value.absent(),
+                Value<double> fillOpacity = const Value.absent(),
+                Value<String> points = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ShapesCompanion(
+                id: id,
+                mapId: mapId,
+                kind: kind,
+                name: name,
+                description: description,
+                colorValue: colorValue,
+                strokeWidth: strokeWidth,
+                dashed: dashed,
+                fillOpacity: fillOpacity,
+                points: points,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String mapId,
+                required String kind,
+                Value<String?> name = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                required int colorValue,
+                Value<int> strokeWidth = const Value.absent(),
+                Value<bool> dashed = const Value.absent(),
+                Value<double> fillOpacity = const Value.absent(),
+                required String points,
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ShapesCompanion.insert(
+                id: id,
+                mapId: mapId,
+                kind: kind,
+                name: name,
+                description: description,
+                colorValue: colorValue,
+                strokeWidth: strokeWidth,
+                dashed: dashed,
+                fillOpacity: fillOpacity,
+                points: points,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ShapesTable, ShapeRow>(table),
+                  $$ShapesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({mapId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (mapId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.mapId,
+                        referencedTable: $$ShapesTableReferences._mapIdTable(
+                          db,
+                        ),
+                        referencedColumn: $$ShapesTableReferences
+                            ._mapIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ShapesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ShapesTable,
+      ShapeRow,
+      $$ShapesTableFilterComposer,
+      $$ShapesTableOrderingComposer,
+      $$ShapesTableAnnotationComposer,
+      $$ShapesTableCreateCompanionBuilder,
+      $$ShapesTableUpdateCompanionBuilder,
+      (ShapeRow, $$ShapesTableReferences),
+      ShapeRow,
+      PrefetchHooks Function({bool mapId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2504,4 +3728,6 @@ class $AppDatabaseManager {
       $$MarkersTableTableManager(_db, _db.markers);
   $$LegendTableTableManager get legend =>
       $$LegendTableTableManager(_db, _db.legend);
+  $$ShapesTableTableManager get shapes =>
+      $$ShapesTableTableManager(_db, _db.shapes);
 }

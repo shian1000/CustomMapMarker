@@ -2,6 +2,8 @@ import 'package:custom_map_marker/core/coordinate_mapper.dart';
 import 'package:custom_map_marker/data/legend.dart';
 import 'package:custom_map_marker/data/map_marker.dart';
 import 'package:custom_map_marker/data/map_project.dart';
+import 'package:custom_map_marker/data/map_shape.dart';
+import 'package:custom_map_marker/data/settings.dart';
 import 'package:custom_map_marker/data/providers.dart';
 import 'package:custom_map_marker/features/map_view/clustered_marker_layer.dart';
 import 'package:custom_map_marker/features/map_view/map_view_screen.dart';
@@ -18,8 +20,10 @@ void main() {
   late FakeMapRepository repo;
   late FakeLegendRepository legendRepo;
   late FakeMarkerRepository markerRepo;
+  late FakeShapeRepository shapeRepo;
 
   setUp(() {
+    shapeRepo = FakeShapeRepository();
     legendRepo = FakeLegendRepository();
     markerRepo = FakeMarkerRepository();
   });
@@ -31,6 +35,8 @@ void main() {
     int? tileMaxZoom,
     List<MapMarker> markers = const [],
     MapLegend legend = const {},
+    List<MapShape> shapes = const [],
+    AppSettings settings = const AppSettings(),
   }) async {
     // Same logical size as the test phone (1080x2340 @ 2.75).
     tester.view.physicalSize = const Size(1080, 2340);
@@ -51,13 +57,22 @@ void main() {
           legendProvider.overrideWith((ref, mapId) => Stream.value(legend)),
           legendRepositoryProvider.overrideWithValue(legendRepo),
           markerRepositoryProvider.overrideWithValue(markerRepo),
+          shapesProvider.overrideWith((ref, mapId) => Stream.value(shapes)),
+          shapeRepositoryProvider.overrideWithValue(shapeRepo),
+          settingsStoreProvider.overrideWithValue(
+            MemorySettingsStore()
+              ..setBool('snapToMarkers', settings.snapToMarkers)
+              ..setBool('showRouteNames', settings.showRouteNames)
+              ..setBool('showAreaNames', settings.showAreaNames),
+          ),
           mapRepositoryProvider.overrideWithValue(repo),
         ],
         child: MaterialApp(home: MapViewScreen(project: project)),
       ),
     );
     await tester.pump();
-    return () => MapCamera.of(tester.element(find.byType(MarkerLayer)));
+    return () =>
+        MapCamera.of(tester.element(find.byType(ClusteredMarkerLayer)));
   }
 
   bool showsWholeImage(MapCamera camera, int width, int height) {
@@ -137,7 +152,9 @@ void main() {
     await pumpMap(tester, width: 1000, height: 800);
     expect(find.widgetWithText(AppBar, 'Mapa'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Zmień nazwę'));
+    await tester.tap(find.byTooltip('Więcej'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Zmień nazwę'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField), 'Temeria');
     await tester.tap(find.text('Zapisz'));
@@ -311,11 +328,184 @@ void main() {
         widthPx: 4000,
         heightPx: 3000,
       ).nativeZoom;
-      MapController.of(tester.element(find.byType(MarkerLayer)))
+      MapController.of(tester.element(find.byType(ClusteredMarkerLayer)))
           .move(camera().center, native);
       await tester.pump();
       expect(find.byType(MarkerClusterBadge), findsNothing);
       expect(find.byType(MarkerPin), findsNWidgets(4));
+    });
+  });
+
+  group('routes and areas', () {
+    /// flutter_map waits to tell a tap from a double tap (which zooms), so a
+    /// tap only lands after that window.
+    Future<void> tapMap(WidgetTester tester, Offset at) async {
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    Future<void> startDrawing(WidgetTester tester, String kind) async {
+      await tester.tap(find.byTooltip('Rysuj'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(kind));
+      await tester.pumpAndSettle();
+    }
+
+    Offset mapPoint(WidgetTester tester, Offset normalized) {
+      final camera = MapCamera.of(
+        tester.element(find.byType(ClusteredMarkerLayer)),
+      );
+      final latLng = MapCoordinateMapper(
+        widthPx: 1000,
+        heightPx: 800,
+      ).toLatLng(normalized);
+      return tester.getTopLeft(find.byType(FlutterMap)) +
+          camera.latLngToScreenOffset(latLng);
+    }
+
+    testWidgets('draws a route point by point and saves it', (tester) async {
+      await pumpMap(tester, width: 1000, height: 800);
+      await startDrawing(tester, 'Trasa');
+      expect(find.textContaining('min. 2'), findsOneWidget);
+      final done = find.widgetWithText(FilledButton, 'Gotowe');
+      expect(tester.widget<FilledButton>(done).onPressed, isNull);
+
+      await tapMap(tester, mapPoint(tester, const Offset(0.2, 0.3)));
+      await tapMap(tester, mapPoint(tester, const Offset(0.6, 0.7)));
+      await tapMap(tester, mapPoint(tester, const Offset(0.8, 0.2)));
+      expect(find.text('Trasa: 3 punkty'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Cofnij punkt'));
+      await tester.pump();
+      expect(find.text('Trasa: 2 punkty'), findsOneWidget);
+
+      await tester.tap(done);
+      await tester.pumpAndSettle();
+      expect(find.text('Nowa trasa'), findsOneWidget);
+      // Routes have no fill opacity choice.
+      expect(find.text('Wypełnienie'), findsNothing);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Nazwa (opcjonalnie)'),
+        'Szlak',
+      );
+      await tester.tap(find.text('Przerywana'));
+      await tester.ensureVisible(find.text('Zapisz'));
+      await tester.tap(find.text('Zapisz'));
+      await tester.pumpAndSettle();
+
+      final (mapId, kind, points, style) = shapeRepo.added.single;
+      expect((mapId, kind), ('map', ShapeKind.route));
+      expect(points, hasLength(2));
+      expect(points[0].dx, closeTo(0.2, 0.01));
+      expect(points[1].dy, closeTo(0.7, 0.01));
+      expect((style.name, style.dashed), ('Szlak', true));
+      // Back to normal: the banner is gone.
+      expect(find.byType(FilledButton), findsNothing);
+    });
+
+    testWidgets('an area needs three points', (tester) async {
+      await pumpMap(tester, width: 1000, height: 800);
+      await startDrawing(tester, 'Obszar');
+      for (final p in const [Offset(0.2, 0.2), Offset(0.5, 0.2)]) {
+        await tapMap(tester, mapPoint(tester, p));
+      }
+      final done = find.widgetWithText(FilledButton, 'Gotowe');
+      expect(tester.widget<FilledButton>(done).onPressed, isNull);
+      await tapMap(tester, mapPoint(tester, const Offset(0.4, 0.6)));
+      expect(tester.widget<FilledButton>(done).onPressed, isNotNull);
+
+      await tester.tap(done);
+      await tester.pumpAndSettle();
+      expect(find.text('Nowy obszar'), findsOneWidget);
+      expect(find.text('Wypełnienie'), findsOneWidget);
+    });
+
+    testWidgets('cancelling drops the points', (tester) async {
+      await pumpMap(tester, width: 1000, height: 800);
+      await startDrawing(tester, 'Trasa');
+      await tapMap(tester, mapPoint(tester, const Offset(0.2, 0.3)));
+      await tester.tap(find.byTooltip('Anuluj rysowanie'));
+      await tester.pump();
+      expect(find.byType(FilledButton), findsNothing);
+      expect(shapeRepo.added, isEmpty);
+    });
+
+    for (final snap in [true, false]) {
+      testWidgets('snapping to markers ${snap ? 'on' : 'off'}', (tester) async {
+        await pumpMap(
+          tester,
+          width: 1000,
+          height: 800,
+          markers: [
+            testMarker('m', 'Wyzima', color: 0xFFE53935, x: 0.5, y: 0.5),
+          ],
+          settings: AppSettings(snapToMarkers: snap),
+        );
+        await startDrawing(tester, 'Trasa');
+        // A few pixels beside the marker's tip (not on its pin).
+        await tapMap(
+          tester,
+          mapPoint(tester, const Offset(0.5, 0.5)) + const Offset(12, 8),
+        );
+        await tapMap(tester, mapPoint(tester, const Offset(0.1, 0.1)));
+        await tester.tap(find.widgetWithText(FilledButton, 'Gotowe'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Zapisz'));
+        await tester.tap(find.text('Zapisz'));
+        await tester.pumpAndSettle();
+
+        final first = shapeRepo.added.single.$3.first;
+        if (snap) {
+          expect(first, const Offset(0.5, 0.5));
+        } else {
+          expect(first, isNot(const Offset(0.5, 0.5)));
+        }
+      });
+    }
+
+    testWidgets('shows routes and areas with names per settings', (
+      tester,
+    ) async {
+      final shapes = [
+        testShape('a', ShapeKind.area, const [
+          Offset(0.1, 0.1),
+          Offset(0.4, 0.1),
+          Offset(0.3, 0.4),
+        ], name: 'Temeria'),
+        testShape('r', ShapeKind.route, const [
+          Offset(0.5, 0.5),
+          Offset(0.9, 0.9),
+        ], name: 'Szlak'),
+      ];
+      await pumpMap(tester, width: 1000, height: 800, shapes: shapes);
+      expect(find.byType(PolygonLayer<String>), findsOneWidget);
+      expect(find.byType(PolylineLayer<String>), findsOneWidget);
+      expect(find.text('Szlak'), findsOneWidget);
+      final polygon = tester
+          .widget<PolygonLayer<String>>(find.byType(PolygonLayer<String>))
+          .polygons
+          .single;
+      expect(polygon.label, 'Temeria');
+
+      await pumpMap(
+        tester,
+        width: 1000,
+        height: 800,
+        shapes: shapes,
+        settings: const AppSettings(
+          showRouteNames: false,
+          showAreaNames: false,
+        ),
+      );
+      expect(find.text('Szlak'), findsNothing);
+      expect(
+        tester
+            .widget<PolygonLayer<String>>(find.byType(PolygonLayer<String>))
+            .polygons
+            .single
+            .label,
+        isNull,
+      );
     });
   });
 }

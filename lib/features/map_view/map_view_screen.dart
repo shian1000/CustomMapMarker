@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:path/path.dart' as p;
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/coordinate_mapper.dart';
 import '../../core/native_tile_renderer.dart';
@@ -14,16 +16,25 @@ import '../../core/tile_pyramid.dart';
 import '../../data/legend.dart';
 import '../../data/map_marker.dart';
 import '../../data/map_project.dart';
+import '../../data/map_shape.dart';
+import '../../data/settings.dart';
+import '../../data/map_transfer.dart';
 import '../../data/marker_repository.dart';
 import '../../data/providers.dart';
 import '../../shared/marker_icons.dart';
 import '../../shared/widgets/marker_pin.dart';
 import '../marker_editor/marker_details_sheet.dart';
+import '../../core/plural.dart';
 import '../legend/legend_sheet.dart';
+import '../settings/settings_screen.dart';
+import '../shape_editor/shape_editor_sheet.dart';
 import '../maps_list/map_dialogs.dart';
 import '../marker_list/marker_list_sheet.dart';
 import '../marker_editor/marker_editor_sheet.dart';
 import 'clustered_marker_layer.dart';
+import 'map_snapshot.dart';
+import 'shape_layers.dart';
+import 'snapshot_options_dialog.dart';
 import 'local_tile_provider.dart';
 
 class MapViewScreen extends ConsumerStatefulWidget {
@@ -69,6 +80,18 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
 
   /// Marker waiting for the user to tap its new position.
   MapMarker? _moving;
+
+  /// Kind of the route or area being drawn, null when not drawing.
+  ShapeKind? _drawingKind;
+
+  /// Points placed so far while drawing, in map coordinates.
+  final _drawingPoints = <LatLng>[];
+
+  /// Markers on screen in the last build, for snapping drawn points.
+  List<MapMarker> _visibleMarkers = const [];
+
+  /// While drawing, a tap within this distance of a marker lands on it.
+  static const _snapRadius = 32.0;
 
   MarkerRepository get _markers => ref.read(markerRepositoryProvider);
 
@@ -172,6 +195,81 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
     );
   }
 
+  Future<void> _saveImage(
+    String name, {
+    required List<MapMarker> allMarkers,
+    required List<MapMarker> visibleMarkers,
+  }) async {
+    final options = await showSnapshotOptionsDialog(
+      context,
+      filterActive: visibleMarkers.length < allMarkers.length,
+    );
+    if (options == null || !mounted) return;
+
+    final region = switch (options.area) {
+      SnapshotArea.wholeMap => const Rect.fromLTWH(0, 0, 1, 1),
+      SnapshotArea.visible => _visibleRegion(),
+    };
+    final navigator = Navigator.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 24),
+              Expanded(child: Text('Tworzenie obrazu…')),
+            ],
+          ),
+        ),
+      ),
+    );
+    try {
+      final String path;
+      try {
+        final png = await renderMapSnapshot(
+          project: widget.project,
+          markers: options.skipHidden ? visibleMarkers : allMarkers,
+          region: region,
+          renderer: NativeTileRenderer.isSupported
+              ? const NativeTileRenderer()
+              : null,
+        );
+        final dir = Directory(
+          p.join(ref.read(documentsDirProvider).path, 'transfer', 'image'),
+        );
+        if (await dir.exists()) await dir.delete(recursive: true);
+        await dir.create(recursive: true);
+        path = p.join(dir.path, '${MapTransfer.safeFileName(name)}.png');
+        await File(path).writeAsBytes(png);
+      } finally {
+        navigator.pop();
+      }
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(path, mimeType: 'image/png')],
+          title: name,
+        ),
+      );
+    } catch (e) {
+      if (mounted) _showMessage('Nie udało się zapisać obrazu: $e');
+    }
+  }
+
+  /// The part of the image currently on screen, normalized to 0..1.
+  Rect _visibleRegion() {
+    final bounds = _controller.camera.visibleBounds;
+    final topLeft = _mapper.toNormalized(bounds.northWest);
+    final bottomRight = _mapper.toNormalized(bounds.southEast);
+    return Rect.fromPoints(
+      topLeft,
+      bottomRight,
+    ).intersect(const Rect.fromLTWH(0, 0, 1, 1));
+  }
+
   /// Zooms so a cluster's members spread out; if they sit on (nearly) the
   /// same spot, zooms to full resolution, where nothing is clustered.
   Future<void> _zoomToCluster(List<MapMarker> members) {
@@ -201,7 +299,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
   }
 
   Future<void> _onLongPress(TapPosition _, LatLng point) async {
-    if (_moving != null) return;
+    if (_moving != null || _drawingKind != null) return;
     if (!_mapper.contains(point)) {
       _showMessage('Znacznik musi leżeć na mapie.');
       return;
@@ -213,7 +311,15 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
     await _revealColor(draft.colorValue);
   }
 
-  Future<void> _onTap(TapPosition _, LatLng point) async {
+  Future<void> _onTap(TapPosition tap, LatLng point) async {
+    if (_drawingKind != null) {
+      if (!_mapper.contains(point)) {
+        _showMessage('Punkt musi leżeć na mapie.');
+        return;
+      }
+      setState(() => _drawingPoints.add(_snapToMarker(tap, point)));
+      return;
+    }
     final moving = _moving;
     if (moving == null) return;
     if (!_mapper.contains(point)) {
@@ -225,6 +331,13 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
   }
 
   Future<void> _onMarkerTap(MapMarker marker) async {
+    if (_drawingKind != null) {
+      // Tapping a pin while drawing means "go through this place".
+      setState(
+        () => _drawingPoints.add(_mapper.toLatLng(Offset(marker.x, marker.y))),
+      );
+      return;
+    }
     if (_moving != null) return;
     final action = await showMarkerDetails(
       context,
@@ -262,6 +375,130 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
           ),
         );
     }
+  }
+
+  /// [point], or the nearest visible marker if one is within [_snapRadius]
+  /// on screen and snapping is on.
+  LatLng _snapToMarker(TapPosition tap, LatLng point) {
+    final tapAt = tap.relative;
+    if (tapAt == null || !ref.read(settingsProvider).snapToMarkers) {
+      return point;
+    }
+    final camera = _controller.camera;
+    LatLng? nearest;
+    var nearestDistance = _snapRadius;
+    for (final m in _visibleMarkers) {
+      final at = _mapper.toLatLng(Offset(m.x, m.y));
+      final distance = (camera.latLngToScreenOffset(at) - tapAt).distance;
+      if (distance <= nearestDistance) {
+        nearest = at;
+        nearestDistance = distance;
+      }
+    }
+    return nearest ?? point;
+  }
+
+  void _startDrawing(ShapeKind kind) => setState(() {
+    _moving = null;
+    _drawingKind = kind;
+    _drawingPoints.clear();
+  });
+
+  void _stopDrawing() => setState(() {
+    _drawingKind = null;
+    _drawingPoints.clear();
+  });
+
+  Future<void> _finishDrawing() async {
+    final kind = _drawingKind;
+    if (kind == null || _drawingPoints.length < kind.minPoints) return;
+    final style = await showShapeEditor(
+      context,
+      kind: kind,
+      colorNames: _legend.names,
+    );
+    // Dismissing the editor goes back to drawing, points intact.
+    if (style == null || !mounted) return;
+    await ref.read(shapeRepositoryProvider).add(widget.project.id, kind, [
+      for (final p in _drawingPoints) _mapper.toNormalized(p),
+    ], style);
+    if (!mounted) return;
+    _stopDrawing();
+    await _revealColor(style.colorValue);
+  }
+
+  List<Widget> _shapeLayers(List<MapShape> shapes, AppSettings settings) {
+    List<LatLng> latLngs(MapShape s) => [
+      for (final p in s.points) _mapper.toLatLng(p),
+    ];
+    final areas = [
+      for (final s in shapes)
+        if (s.kind == ShapeKind.area)
+          areaPolygon(
+            latLngs(s),
+            s.style,
+            hitValue: s.id,
+            showName: settings.showAreaNames,
+          ),
+    ];
+    final routes = [
+      for (final s in shapes)
+        if (s.kind == ShapeKind.route) s,
+    ];
+    final routeLabels = [
+      if (settings.showRouteNames)
+        for (final r in routes)
+          if (r.name case final name?)
+            routeLabel(r.id, midpointAlong(latLngs(r)), name),
+    ];
+    return [
+      if (areas.isNotEmpty) PolygonLayer<String>(polygons: areas),
+      if (routes.isNotEmpty)
+        PolylineLayer<String>(
+          polylines: [
+            for (final r in routes)
+              routePolyline(latLngs(r), r.style, hitValue: r.id),
+          ],
+        ),
+      if (routeLabels.isNotEmpty) MarkerLayer(markers: routeLabels),
+    ];
+  }
+
+  /// The shape being drawn and handles on its points.
+  List<Widget> _drawingLayers(BuildContext context, ShapeKind kind) {
+    final color = Theme.of(context).colorScheme.primary;
+    final preview = ShapeStyle(
+      colorValue: color.toARGB32(),
+      dashed: true,
+      fillOpacity: 0.2,
+    );
+    final points = _drawingPoints;
+    return [
+      if (kind == ShapeKind.area && points.length >= 3)
+        PolygonLayer(polygons: [areaPolygon(points, preview, showName: false)])
+      else if (points.length >= 2)
+        PolylineLayer(polylines: [routePolyline(points, preview)]),
+      MarkerLayer(
+        markers: [
+          for (final (i, p) in points.indexed)
+            Marker(
+              point: p,
+              width: 18,
+              height: 18,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    // The latest point stands out, since Undo removes it.
+                    color: i == points.length - 1 ? color : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: color, width: 3),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    ];
   }
 
   Widget _imageLayer(BuildContext context) {
@@ -322,108 +559,234 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
     ];
     final hiddenByFilter = allMarkers.length - markers.length;
     final moving = _moving;
+    final drawingKind = _drawingKind;
+    final shapes =
+        ref.watch(shapesProvider(widget.project.id)).value ?? const [];
+    final settings = ref.watch(settingsProvider);
+    _visibleMarkers = markers;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(name),
-        actions: [
-          IconButton(
-            tooltip: 'Legenda i filtr',
-            onPressed: () => showLegendSheet(context, widget.project.id),
-            icon: Badge(
-              // Dot when the filter hides something.
-              isLabelVisible: hiddenByFilter > 0,
-              child: const Icon(Icons.filter_alt_outlined),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Lista znaczników',
-            onPressed: moving == null
-                ? () => _openMarkerList(markers, hiddenByFilter: hiddenByFilter)
-                : null,
-            icon: const Icon(Icons.format_list_bulleted),
-          ),
-          IconButton(
-            tooltip: 'Zmień nazwę',
-            onPressed: () => _rename(name),
-            icon: const Icon(Icons.edit_outlined),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final fitZoom = _mapper.fitZoom(constraints.biggest);
-              return FlutterMap(
-                mapController: _controller,
-                options: MapOptions(
-                  crs: const CrsSimple(),
-                  // The fit is applied after the first layout; until then the
-                  // camera must already sit inside the constraint below.
-                  initialCenter: _mapper.toLatLng(const Offset(0.5, 0.5)),
-                  initialZoom: fitZoom,
-                  initialCameraFit: _fitImage,
-                  cameraConstraint: CameraConstraint.containCenter(
-                    bounds: _mapper.bounds,
-                  ),
-                  minZoom: fitZoom - 1,
-                  // Tiny images may already be magnified when fitted.
-                  maxZoom: max(_mapper.nativeZoom + _maxOverZoom, fitZoom + 1),
-                  backgroundColor: Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest,
-                  interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-                  ),
-                  onLongPress: _onLongPress,
-                  onPositionChanged: (_, hasGesture) {
-                    // Let the user take over mid-flight.
-                    if (hasGesture) _flight?.stop();
-                  },
-                  onTap: _onTap,
-                ),
-                children: [
-                  _imageLayer(context),
-                  ClusteredMarkerLayer(
-                    markers: markers,
-                    positionOf: (m) => _mapper.toLatLng(Offset(m.x, m.y)),
-                    clusterBelowZoom: _mapper.nativeZoom,
-                    neverCluster: {?moving?.id, ?_focusedId},
-                    onClusterTap: _zoomToCluster,
-                    pinBuilder: (m) => MarkerPin(
-                      label: m.label,
-                      color: Color(m.colorValue),
-                      icon: markerIconFor(m.icon)?.icon,
-                      highlighted: m.id == moving?.id || m.id == _focusedId,
-                      emphasized: m.id == _focusedId,
-                      onTap: () => _onMarkerTap(m),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-          if (moving != null)
-            Positioned(
-              top: 8,
-              left: 8,
-              right: 8,
-              child: _MoveBanner(
-                label: moving.label,
-                onCancel: () => setState(() => _moving = null),
+    return PopScope(
+      // Back leaves drawing or moving first, not the map.
+      canPop: moving == null && drawingKind == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (drawingKind != null) _stopDrawing();
+        if (moving != null) setState(() => _moving = null);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(name),
+          actions: [
+            IconButton(
+              tooltip: 'Legenda i filtr',
+              onPressed: () => showLegendSheet(context, widget.project.id),
+              icon: Badge(
+                // Dot when the filter hides something.
+                isLabelVisible: hiddenByFilter > 0,
+                child: const Icon(Icons.filter_alt_outlined),
               ),
             ),
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: _MapControls(
-              onZoomIn: () => _zoomBy(1),
-              onZoomOut: () => _zoomBy(-1),
-              onFit: () => _controller.fitCamera(_fitImage),
+            IconButton(
+              tooltip: 'Lista znaczników',
+              onPressed: moving == null && drawingKind == null
+                  ? () =>
+                        _openMarkerList(markers, hiddenByFilter: hiddenByFilter)
+                  : null,
+              icon: const Icon(Icons.format_list_bulleted),
             ),
-          ),
-        ],
+            PopupMenuButton<_MapAction>(
+              tooltip: 'Więcej',
+              onSelected: (action) => switch (action) {
+                _MapAction.rename => _rename(name),
+                _MapAction.saveImage => _saveImage(
+                  name,
+                  allMarkers: allMarkers,
+                  visibleMarkers: markers,
+                ),
+                _MapAction.settings => openSettings(context),
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _MapAction.rename,
+                  child: ListTile(
+                    leading: Icon(Icons.edit_outlined),
+                    title: Text('Zmień nazwę'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _MapAction.saveImage,
+                  child: ListTile(
+                    leading: Icon(Icons.image_outlined),
+                    title: Text('Zapisz jako obraz'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _MapAction.settings,
+                  child: ListTile(
+                    leading: Icon(Icons.settings_outlined),
+                    title: Text('Ustawienia'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        body: Stack(
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final fitZoom = _mapper.fitZoom(constraints.biggest);
+                return FlutterMap(
+                  mapController: _controller,
+                  options: MapOptions(
+                    crs: const CrsSimple(),
+                    // The fit is applied after the first layout; until then the
+                    // camera must already sit inside the constraint below.
+                    initialCenter: _mapper.toLatLng(const Offset(0.5, 0.5)),
+                    initialZoom: fitZoom,
+                    initialCameraFit: _fitImage,
+                    cameraConstraint: CameraConstraint.containCenter(
+                      bounds: _mapper.bounds,
+                    ),
+                    minZoom: fitZoom - 1,
+                    // Tiny images may already be magnified when fitted.
+                    maxZoom: max(
+                      _mapper.nativeZoom + _maxOverZoom,
+                      fitZoom + 1,
+                    ),
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest,
+                    interactionOptions: const InteractionOptions(
+                      // Not toggling doubleTapZoom while drawing: flutter_map
+                      // 8.3 stops reporting taps when that flag changes.
+                      flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                    ),
+                    onLongPress: _onLongPress,
+                    onPositionChanged: (_, hasGesture) {
+                      // Let the user take over mid-flight.
+                      if (hasGesture) _flight?.stop();
+                    },
+                    onTap: _onTap,
+                  ),
+                  children: [
+                    _imageLayer(context),
+                    ..._shapeLayers(shapes, settings),
+                    if (drawingKind != null)
+                      ..._drawingLayers(context, drawingKind),
+                    ClusteredMarkerLayer(
+                      markers: markers,
+                      positionOf: (m) => _mapper.toLatLng(Offset(m.x, m.y)),
+                      clusterBelowZoom: _mapper.nativeZoom,
+                      neverCluster: {?moving?.id, ?_focusedId},
+                      onClusterTap: _zoomToCluster,
+                      pinBuilder: (m) => MarkerPin(
+                        label: m.label,
+                        color: Color(m.colorValue),
+                        icon: markerIconFor(m.icon)?.icon,
+                        highlighted: m.id == moving?.id || m.id == _focusedId,
+                        emphasized: m.id == _focusedId,
+                        onTap: () => _onMarkerTap(m),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            if (drawingKind != null)
+              Positioned(
+                top: 8,
+                left: 8,
+                right: 8,
+                child: _DrawBanner(
+                  kind: drawingKind,
+                  points: _drawingPoints.length,
+                  onUndo: _drawingPoints.isEmpty
+                      ? null
+                      : () => setState(_drawingPoints.removeLast),
+                  onCancel: _stopDrawing,
+                  onDone: _drawingPoints.length >= drawingKind.minPoints
+                      ? _finishDrawing
+                      : null,
+                ),
+              ),
+            if (moving != null)
+              Positioned(
+                top: 8,
+                left: 8,
+                right: 8,
+                child: _MoveBanner(
+                  label: moving.label,
+                  onCancel: () => setState(() => _moving = null),
+                ),
+              ),
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: _MapControls(
+                onDraw: moving == null && drawingKind == null
+                    ? _startDrawing
+                    : null,
+                onZoomIn: () => _zoomBy(1),
+                onZoomOut: () => _zoomBy(-1),
+                onFit: () => _controller.fitCamera(_fitImage),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawBanner extends StatelessWidget {
+  const _DrawBanner({
+    required this.kind,
+    required this.points,
+    required this.onUndo,
+    required this.onCancel,
+    required this.onDone,
+  });
+
+  final ShapeKind kind;
+  final int points;
+  final VoidCallback? onUndo;
+  final VoidCallback onCancel;
+
+  /// Null until there are enough points.
+  final VoidCallback? onDone;
+
+  @override
+  Widget build(BuildContext context) {
+    final what = kind == ShapeKind.route ? 'Trasa' : 'Obszar';
+    final hint = points < kind.minPoints
+        ? 'stuknij, aby dodać punkty (min. ${kind.minPoints})'
+        : '$points ${pluralPl(points, 'punkt', 'punkty', 'punktów')}';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 4, 4),
+        child: Row(
+          children: [
+            Icon(
+              kind == ShapeKind.route
+                  ? Icons.timeline
+                  : Icons.pentagon_outlined,
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text('$what: $hint')),
+            IconButton(
+              tooltip: 'Cofnij punkt',
+              onPressed: onUndo,
+              icon: const Icon(Icons.undo),
+            ),
+            IconButton(
+              tooltip: 'Anuluj rysowanie',
+              onPressed: onCancel,
+              icon: const Icon(Icons.close),
+            ),
+            FilledButton(onPressed: onDone, child: const Text('Gotowe')),
+          ],
+        ),
       ),
     );
   }
@@ -455,11 +818,14 @@ class _MoveBanner extends StatelessWidget {
 
 class _MapControls extends StatelessWidget {
   const _MapControls({
+    required this.onDraw,
     required this.onZoomIn,
     required this.onZoomOut,
     required this.onFit,
   });
 
+  /// Starts drawing a route or area; null while that's not possible.
+  final ValueChanged<ShapeKind>? onDraw;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
   final VoidCallback onFit;
@@ -470,6 +836,29 @@ class _MapControls extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          PopupMenuButton<ShapeKind>(
+            tooltip: 'Rysuj',
+            enabled: onDraw != null,
+            onSelected: onDraw,
+            icon: const Icon(Icons.draw_outlined),
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: ShapeKind.route,
+                child: ListTile(
+                  leading: Icon(Icons.timeline),
+                  title: Text('Trasa'),
+                ),
+              ),
+              PopupMenuItem(
+                value: ShapeKind.area,
+                child: ListTile(
+                  leading: Icon(Icons.pentagon_outlined),
+                  title: Text('Obszar'),
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 1, indent: 8, endIndent: 8),
           IconButton(
             tooltip: 'Przybliż',
             onPressed: onZoomIn,
@@ -491,3 +880,5 @@ class _MapControls extends StatelessWidget {
     );
   }
 }
+
+enum _MapAction { rename, saveImage, settings }

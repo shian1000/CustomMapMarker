@@ -10,6 +10,8 @@ import 'legend.dart';
 import 'legend_repository.dart';
 import 'map_marker.dart';
 import 'map_project.dart';
+import 'map_shape.dart';
+import 'shape_repository.dart';
 import 'map_transfer.dart';
 import 'map_repository.dart';
 import 'marker_repository.dart';
@@ -68,3 +70,12 @@ final mapTransferProvider = Provider(
     ),
   ),
 );
+
+final shapeRepositoryProvider = Provider(
+  (ref) => ShapeRepository(ref.watch(databaseProvider)),
+);
+
+final shapesProvider = StreamProvider.autoDispose
+    .family<List<MapShape>, String>(
+      (ref, mapId) => ref.watch(shapeRepositoryProvider).watchShapes(mapId),
+    );

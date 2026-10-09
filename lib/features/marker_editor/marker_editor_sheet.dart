@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/map_marker.dart';
 import '../../shared/marker_colors.dart';
 import '../../shared/marker_icons.dart';
+import '../../shared/widgets/color_palette_picker.dart';
 
 /// Shows a bottom sheet for creating or editing a marker.
 /// Returns null when dismissed without saving.
@@ -114,34 +115,10 @@ class _MarkerEditorSheetState extends State<MarkerEditorSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Text('Kolor', style: Theme.of(context).textTheme.labelLarge),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      widget.colorNames[_colorValue] ?? 'bez nazwy',
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final color in markerColors)
-                    _ColorSwatch(
-                      color: color,
-                      selected: color.toARGB32() == _colorValue,
-                      onTap: () =>
-                          setState(() => _colorValue = color.toARGB32()),
-                    ),
-                ],
+              ColorPalettePicker(
+                selected: _colorValue,
+                colorNames: widget.colorNames,
+                onChanged: (c) => setState(() => _colorValue = c),
               ),
               const SizedBox(height: 16),
               Row(
@@ -240,48 +217,6 @@ class _IconChoice extends StatelessWidget {
               color: selected ? onColor(color) : scheme.onSurfaceVariant,
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ColorSwatch extends StatelessWidget {
-  const _ColorSwatch({
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: 'Kolor',
-      child: InkResponse(
-        onTap: onTap,
-        radius: 24,
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: selected
-                  ? Theme.of(context).colorScheme.onSurface
-                  : Colors.black12,
-              width: selected ? 3 : 1,
-            ),
-          ),
-          child: selected
-              ? Icon(Icons.check, color: onColor(color), size: 20)
-              : null,
         ),
       ),
     );

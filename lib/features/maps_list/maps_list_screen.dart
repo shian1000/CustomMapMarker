@@ -12,6 +12,7 @@ import '../../core/plural.dart';
 import '../../data/map_project.dart';
 import '../../data/providers.dart';
 import '../map_view/map_view_screen.dart';
+import '../settings/settings_screen.dart';
 import 'map_dialogs.dart';
 
 class MapsListScreen extends ConsumerStatefulWidget {
@@ -210,7 +211,16 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
     final maps = ref.watch(mapsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Moje mapy')),
+      appBar: AppBar(
+        title: const Text('Moje mapy'),
+        actions: [
+          IconButton(
+            tooltip: 'Ustawienia',
+            onPressed: () => openSettings(context),
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
       body: switch (maps) {
         AsyncData(value: []) => const _EmptyState(),
         AsyncData(value: final maps) => GridView.builder(

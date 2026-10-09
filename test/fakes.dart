@@ -7,7 +7,9 @@ import 'package:custom_map_marker/core/native_tile_renderer.dart';
 import 'package:custom_map_marker/data/image_file_picker.dart';
 import 'package:custom_map_marker/data/legend_repository.dart';
 import 'package:custom_map_marker/data/map_marker.dart';
+import 'package:custom_map_marker/data/map_shape.dart';
 import 'package:custom_map_marker/data/marker_repository.dart';
+import 'package:custom_map_marker/data/shape_repository.dart';
 import 'package:custom_map_marker/data/map_project.dart';
 import 'package:custom_map_marker/data/map_repository.dart';
 
@@ -206,5 +208,60 @@ MapMarker testMarker(
   y: y,
   label: label,
   colorValue: color,
+  createdAt: DateTime(2026),
+);
+
+extension TestMapImage on MapProject {
+  /// The same map with its image (and so its tiles directory) at [path].
+  MapProject withImage(String path) => MapProject(
+    id: id,
+    name: name,
+    imagePath: path,
+    widthPx: widthPx,
+    heightPx: heightPx,
+    createdAt: createdAt,
+    tileMaxZoom: tileMaxZoom,
+  );
+}
+
+/// Records added shapes instead of storing them.
+class FakeShapeRepository implements ShapeRepository {
+  final added =
+      <(String mapId, ShapeKind kind, List<Offset> points, ShapeStyle style)>[];
+
+  @override
+  Future<MapShape> add(
+    String mapId,
+    ShapeKind kind,
+    List<Offset> points,
+    ShapeStyle style,
+  ) async {
+    added.add((mapId, kind, points, style));
+    return MapShape(
+      id: 'new',
+      mapId: mapId,
+      kind: kind,
+      points: points,
+      style: style,
+      createdAt: DateTime(2026),
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+MapShape testShape(
+  String id,
+  ShapeKind kind,
+  List<Offset> points, {
+  String? name,
+  int color = 0xFF1E88E5,
+}) => MapShape(
+  id: id,
+  mapId: 'map',
+  kind: kind,
+  points: points,
+  style: ShapeStyle(name: name, colorValue: color),
   createdAt: DateTime(2026),
 );

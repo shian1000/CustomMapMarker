@@ -113,9 +113,13 @@ This starts the launcher activity without needing to know its exact class name.
 ## Step 5 — Open scrcpy
 
 ```bash
-DISPLAY=:0 setsid nohup scrcpy -s <device-id> > <scratchpad>/scrcpy.log 2>&1 < /dev/null &
+DISPLAY=:0 SNAP_LAUNCHER_NOTICE_ENABLED=false setsid nohup scrcpy -s <device-id> > <scratchpad>/scrcpy.log 2>&1 < /dev/null &
 disown
 ```
+
+`SNAP_LAUNCHER_NOTICE_ENABLED=false` matters: after a snap update the scrcpy snap shows a
+one-off "unofficial distribution" notice instead of mirroring (the log then holds only that
+notice and no `[server] INFO: Device:` line).
 
 Launch it exactly this way (`setsid` + `nohup` + background `&` + `disown` in one Bash call) — a
 plain background launch was observed to get reaped as soon as the tool call that started it
