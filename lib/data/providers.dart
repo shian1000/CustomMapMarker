@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../core/native_tile_renderer.dart';
 import 'database.dart';
 import 'image_file_picker.dart';
+import 'incoming_files.dart';
 import 'legend.dart';
 import 'legend_repository.dart';
 import 'map_marker.dart';
@@ -28,6 +29,8 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 });
 
 final imageFilePickerProvider = Provider((ref) => const ImageFilePicker());
+
+final incomingFilesProvider = Provider((ref) => const IncomingFiles());
 
 final mapRepositoryProvider = Provider(
   (ref) => MapRepository(

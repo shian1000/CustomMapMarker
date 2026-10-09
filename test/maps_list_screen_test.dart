@@ -1,5 +1,12 @@
 import 'package:custom_map_marker/data/map_project.dart';
+
+import 'dart:async';
+import 'dart:io';
+
 import 'package:custom_map_marker/data/image_file_picker.dart';
+import 'package:custom_map_marker/data/incoming_files.dart';
+import 'package:custom_map_marker/data/legend.dart';
+import 'package:custom_map_marker/features/map_view/map_view_screen.dart';
 import 'package:custom_map_marker/data/providers.dart';
 import 'package:custom_map_marker/features/maps_list/maps_list_screen.dart';
 import 'package:flutter/material.dart';
@@ -17,9 +24,16 @@ MapSummary _summary(String id, String name, int markers) => MapSummary(
 
 void main() {
   late FakeMapRepository repo;
+  late StreamController<IncomingFile> incoming;
+  late List<String> transferred;
   MapArchiveException? transferError;
 
-  setUp(() => repo = FakeMapRepository());
+  setUp(() {
+    repo = FakeMapRepository();
+    incoming = StreamController();
+    transferred = [];
+    transferError = null;
+  });
 
   Future<void> pumpList(
     WidgetTester tester,
@@ -36,10 +50,17 @@ void main() {
               FakeImageFilePicker(picked, anyFile: anyFile),
             ),
             mapTransferProvider.overrideWithValue(
-              _FailingTransfer(() => transferError),
+              _FakeTransfer(() => transferError, transferred),
+            ),
+            incomingFilesProvider.overrideWithValue(
+              _FakeIncomingFiles(incoming.stream),
             ),
             // Import opens the map screen, which watches markers.
             markersProvider.overrideWith((ref, id) => Stream.value(const [])),
+            shapesProvider.overrideWith((ref, id) => Stream.value(const [])),
+            legendProvider.overrideWith(
+              (ref, id) => Stream.value(const <int, LegendEntry>{}),
+            ),
           ],
           child: const MaterialApp(home: MapsListScreen()),
         ),
@@ -221,6 +242,57 @@ void main() {
       await _settle(tester);
     }
   });
+
+  group('files opened from other apps', () {
+    late Directory dir;
+
+    setUp(() => dir = Directory.systemTemp.createTempSync('incoming'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    testWidgets('are imported and opened', (tester) async {
+      await pumpList(tester, const []);
+      incoming.add((path: '${dir.path}/1.cmm', error: null));
+      await _settle(tester);
+      expect(transferred, ['${dir.path}/1.cmm']);
+      expect(find.byType(MapViewScreen), findsOneWidget);
+    });
+
+    testWidgets('explain why a file cannot be imported and remove the copy', (
+      tester,
+    ) async {
+      await pumpList(tester, const []);
+      transferError = const MapArchiveException(MapArchiveError.notAMapFile);
+      final copy = File('${dir.path}/2.cmm')..writeAsStringSync('x');
+      incoming.add((path: copy.path, error: null));
+      await _settle(tester);
+      expect(find.text('To nie jest plik mapy (.cmm).'), findsOneWidget);
+      expect(find.byType(MapViewScreen), findsNothing);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      expect(copy.existsSync(), isFalse);
+    });
+
+    testWidgets('report files that could not be copied', (tester) async {
+      await pumpList(tester, const []);
+      incoming.add((path: null, error: 'Brak dostępu'));
+      await _settle(tester);
+      expect(
+        find.text('Nie udało się odczytać pliku: Brak dostępu'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('are imported one after another', (tester) async {
+      await pumpList(tester, const []);
+      incoming
+        ..add((path: '${dir.path}/a.cmm', error: null))
+        ..add((path: '${dir.path}/b.cmm', error: null));
+      await _settle(tester);
+      expect(transferred, ['${dir.path}/a.cmm', '${dir.path}/b.cmm']);
+      expect(find.byType(MapViewScreen), findsNWidgets(1));
+    });
+  });
 }
 
 /// Like pumpAndSettle, but tolerates the import button's endless spinner.
@@ -230,17 +302,31 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-class _FailingTransfer implements MapTransfer {
-  _FailingTransfer(this.error);
+class _FakeTransfer implements MapTransfer {
+  _FakeTransfer(this.error, this.imported);
 
   final MapArchiveException? Function() error;
+  final List<String> imported;
 
   @override
   Future<MapProject> import(
     String path, {
     void Function(double progress)? onProgress,
-  }) async => throw error()!;
+  }) async {
+    if (error() case final error?) throw error;
+    imported.add(path);
+    return testMap('new', name: 'Z pliku');
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeIncomingFiles implements IncomingFiles {
+  const _FakeIncomingFiles(this.stream);
+
+  final Stream<IncomingFile> stream;
+
+  @override
+  Stream<IncomingFile> files() => stream;
 }

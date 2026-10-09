@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -9,6 +10,7 @@ import '../../core/image_utils.dart';
 import '../../core/map_archive.dart';
 import '../../core/map_naming.dart';
 import '../../core/plural.dart';
+import '../../data/incoming_files.dart';
 import '../../data/map_project.dart';
 import '../../data/providers.dart';
 import '../map_view/map_view_screen.dart';
@@ -24,6 +26,29 @@ class MapsListScreen extends ConsumerStatefulWidget {
 
 class _MapsListScreenState extends ConsumerState<MapsListScreen> {
   bool _importing = false;
+  StreamSubscription<IncomingFile>? _incomingSubscription;
+
+  /// Imports of files opened from other apps, run one after another.
+  Future<void> _incomingImports = Future.value();
+
+  @override
+  void initState() {
+    super.initState();
+    _incomingSubscription = ref
+        .read(incomingFilesProvider)
+        .files()
+        .listen(
+          (file) => _incomingImports = _incomingImports.then(
+            (_) => _importIncoming(file),
+          ),
+        );
+  }
+
+  @override
+  void dispose() {
+    _incomingSubscription?.cancel();
+    super.dispose();
+  }
 
   Future<void> _import() async {
     setState(() => _importing = true);
@@ -90,6 +115,35 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
     try {
       final path = await ref.read(imageFilePickerProvider).pickAnyFile();
       if (path == null || !mounted) return;
+      await _importMapFrom(path);
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  /// Imports a map file opened from another app. It's shown on top of
+  /// whatever is open, so nothing the user is doing gets closed.
+  Future<void> _importIncoming(IncomingFile file) async {
+    if (!mounted) return;
+    final path = file.path;
+    if (path == null) {
+      _showMessage('Nie udało się odczytać pliku: ${file.error}');
+      return;
+    }
+    setState(() => _importing = true);
+    try {
+      await _importMapFrom(path);
+    } finally {
+      // Only a cache copy; if this fails the system clears it eventually.
+      unawaited(File(path).delete().then((_) {}, onError: (_) {}));
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  /// Imports the `.cmm` file at [path] and opens the new map, or explains
+  /// why that failed.
+  Future<void> _importMapFrom(String path) async {
+    try {
       final map = await _withProgress(
         title: 'Importowanie mapy',
         (onProgress) =>
@@ -107,8 +161,6 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
       _showMessage('Plik mapy zawiera nieobsługiwany obraz.');
     } catch (e) {
       _showMessage('Import nie powiódł się: $e');
-    } finally {
-      if (mounted) setState(() => _importing = false);
     }
   }
 
