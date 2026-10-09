@@ -508,4 +508,176 @@ void main() {
       );
     });
   });
+
+  group('editing routes and areas', () {
+    Future<void> tapMap(WidgetTester tester, Offset at) async {
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    Offset screenOf(WidgetTester tester, Offset normalized) {
+      final camera = MapCamera.of(
+        tester.element(find.byType(ClusteredMarkerLayer)),
+      );
+      final latLng = MapCoordinateMapper(
+        widthPx: 1000,
+        heightPx: 800,
+      ).toLatLng(normalized);
+      return tester.getTopLeft(find.byType(FlutterMap)) +
+          camera.latLngToScreenOffset(latLng);
+    }
+
+    final route = testShape('r', ShapeKind.route, const [
+      Offset(0.2, 0.5),
+      Offset(0.8, 0.5),
+    ], name: 'Szlak');
+    final area = testShape('a', ShapeKind.area, const [
+      Offset(0.2, 0.2),
+      Offset(0.6, 0.2),
+      Offset(0.6, 0.6),
+      Offset(0.2, 0.6),
+    ], name: 'Temeria');
+
+    Future<void> openDetails(WidgetTester tester, Offset on) async {
+      await tapMap(tester, screenOf(tester, on));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('tapping a route opens it; delete can be undone', (
+      tester,
+    ) async {
+      await pumpMap(tester, width: 1000, height: 800, shapes: [route]);
+      await openDetails(tester, const Offset(0.5, 0.5));
+      expect(find.text('Trasa · 2 punkty'), findsOneWidget);
+
+      await tester.tap(find.text('Usuń'));
+      await tester.pumpAndSettle();
+      expect(shapeRepo.removed, ['r']);
+      expect(find.text('Usunięto trasę „Szlak”'), findsOneWidget);
+      await tester.tap(find.text('Cofnij'));
+      await tester.pump();
+      expect(shapeRepo.restored, ['r']);
+    });
+
+    testWidgets('edits the look of an area', (tester) async {
+      await pumpMap(tester, width: 1000, height: 800, shapes: [area]);
+      await openDetails(tester, const Offset(0.4, 0.4));
+      expect(find.text('Obszar · 4 punkty'), findsOneWidget);
+      await tester.tap(find.text('Edytuj'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edytuj obszar'), findsOneWidget);
+      await tester.tap(find.text('45%'));
+      await tester.ensureVisible(find.text('Zapisz'));
+      await tester.tap(find.text('Zapisz'));
+      await tester.pumpAndSettle();
+      final (id, style) = shapeRepo.styled.single;
+      expect((id, style.name, style.fillOpacity), ('a', 'Temeria', 0.45));
+    });
+
+    Future<void> editPoints(WidgetTester tester, Offset on) async {
+      await openDetails(tester, on);
+      await tester.tap(find.text('Zmień punkty'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('drags a point and saves', (tester) async {
+      await pumpMap(tester, width: 1000, height: 800, shapes: [route]);
+      await editPoints(tester, const Offset(0.5, 0.5));
+      final camera = MapCamera.of(
+        tester.element(find.byType(ClusteredMarkerLayer)),
+      );
+      final centerBefore = camera.center;
+      final from = screenOf(tester, const Offset(0.8, 0.5));
+      final to = screenOf(tester, const Offset(0.8, 0.2));
+      // Many small moves, like a real finger: the map's own drag
+      // recognizers get every chance to steal the gesture.
+      await tester.timedDragFrom(
+        from,
+        to - from,
+        const Duration(milliseconds: 600),
+      );
+      await tester.pump();
+      expect(
+        MapCamera.of(tester.element(find.byType(ClusteredMarkerLayer))).center,
+        centerBefore,
+        reason: 'dragging a point must not pan the map',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Gotowe'));
+      await tester.pumpAndSettle();
+
+      final (id, points) = shapeRepo.repointed.single;
+      expect(id, 'r');
+      expect(points[0], const Offset(0.2, 0.5));
+      expect(points[1].dx, closeTo(0.8, 0.02));
+      expect(points[1].dy, closeTo(0.2, 0.02));
+    });
+
+    testWidgets('tapping a segment middle inserts a point', (tester) async {
+      await pumpMap(tester, width: 1000, height: 800, shapes: [route]);
+      await editPoints(tester, const Offset(0.4, 0.5));
+      await tester.tapAt(screenOf(tester, const Offset(0.5, 0.5)));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Gotowe'));
+      await tester.pumpAndSettle();
+      final points = shapeRepo.repointed.single.$2;
+      expect(points, hasLength(3));
+      expect(points[1].dx, closeTo(0.5, 0.01));
+    });
+
+    testWidgets('deletes a selected point but keeps the minimum', (
+      tester,
+    ) async {
+      await pumpMap(tester, width: 1000, height: 800, shapes: [area]);
+      await editPoints(tester, const Offset(0.4, 0.4));
+      IconButton deleteButton() => tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.delete_outline),
+      );
+      expect(deleteButton().onPressed, isNull);
+
+      await tester.tapAt(screenOf(tester, const Offset(0.6, 0.6)));
+      await tester.pump();
+      expect(deleteButton().onPressed, isNotNull);
+      await tester.tap(find.byTooltip('Usuń punkt'));
+      await tester.pump();
+
+      // Down to three: an area can't lose another one.
+      await tester.tapAt(screenOf(tester, const Offset(0.2, 0.2)));
+      await tester.pump();
+      expect(deleteButton().onPressed, isNull);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Gotowe'));
+      await tester.pumpAndSettle();
+      final saved = shapeRepo.repointed.single.$2;
+      expect(saved, hasLength(3));
+      expect(saved[0].dx, closeTo(0.2, 1e-9));
+      expect(saved[1].dx, closeTo(0.6, 1e-9));
+      expect(saved[2].dy, closeTo(0.6, 1e-9));
+      expect(saved[2].dx, closeTo(0.2, 1e-9));
+    });
+
+    testWidgets('cancelling discards the changes', (tester) async {
+      await pumpMap(tester, width: 1000, height: 800, shapes: [route]);
+      await editPoints(tester, const Offset(0.5, 0.5));
+      await tester.tapAt(screenOf(tester, const Offset(0.5, 0.5)));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Anuluj zmiany'));
+      await tester.pump();
+      expect(shapeRepo.repointed, isEmpty);
+      expect(find.byType(FilledButton), findsNothing);
+    });
+
+    testWidgets('while drawing, taps inside an area add points', (
+      tester,
+    ) async {
+      await pumpMap(tester, width: 1000, height: 800, shapes: [area]);
+      await tester.tap(find.byTooltip('Rysuj'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Trasa'));
+      await tester.pumpAndSettle();
+      await tapMap(tester, screenOf(tester, const Offset(0.3, 0.3)));
+      await tapMap(tester, screenOf(tester, const Offset(0.5, 0.5)));
+      expect(find.text('Trasa: 2 punkty'), findsOneWidget);
+      expect(find.text('Zmień punkty'), findsNothing);
+    });
+  });
 }

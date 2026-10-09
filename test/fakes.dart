@@ -224,10 +224,31 @@ extension TestMapImage on MapProject {
   );
 }
 
-/// Records added shapes instead of storing them.
+/// Records shape changes instead of storing them.
 class FakeShapeRepository implements ShapeRepository {
   final added =
       <(String mapId, ShapeKind kind, List<Offset> points, ShapeStyle style)>[];
+  final removed = <String>[];
+  final restored = <String>[];
+  final styled = <(String id, ShapeStyle style)>[];
+  final repointed = <(String id, List<Offset> points)>[];
+
+  @override
+  Future<void> remove(String id) async => removed.add(id);
+
+  @override
+  Future<void> restore(MapShape shape) async => restored.add(shape.id);
+
+  @override
+  Future<void> updateStyle(String id, ShapeStyle style) async =>
+      styled.add((id, style));
+
+  @override
+  Future<void> updatePoints(
+    String id,
+    ShapeKind kind,
+    List<Offset> points,
+  ) async => repointed.add((id, points));
 
   @override
   Future<MapShape> add(

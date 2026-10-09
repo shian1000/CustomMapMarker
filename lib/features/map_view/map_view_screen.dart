@@ -27,6 +27,7 @@ import '../marker_editor/marker_details_sheet.dart';
 import '../../core/plural.dart';
 import '../legend/legend_sheet.dart';
 import '../settings/settings_screen.dart';
+import '../shape_editor/shape_details_sheet.dart';
 import '../shape_editor/shape_editor_sheet.dart';
 import '../maps_list/map_dialogs.dart';
 import '../marker_list/marker_list_sheet.dart';
@@ -34,6 +35,7 @@ import '../marker_editor/marker_editor_sheet.dart';
 import 'clustered_marker_layer.dart';
 import 'map_snapshot.dart';
 import 'shape_layers.dart';
+import 'shape_point_handles.dart';
 import 'snapshot_options_dialog.dart';
 import 'local_tile_provider.dart';
 
@@ -93,6 +95,22 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
   /// While drawing, a tap within this distance of a marker lands on it.
   static const _snapRadius = 32.0;
 
+  /// Route or area whose points are being edited, null otherwise.
+  MapShape? _editingShape;
+
+  /// Working copy of [_editingShape]'s points, saved on "Gotowe".
+  final _editPoints = <LatLng>[];
+
+  /// Point selected (tapped) while editing, e.g. to delete it.
+  int? _selectedPoint;
+
+  /// Taps on routes and areas, reported by their layers.
+  final _routeHits = ValueNotifier<LayerHitResult<String>?>(null);
+  final _areaHits = ValueNotifier<LayerHitResult<String>?>(null);
+
+  /// The last built shapes, to look up a tapped one by id.
+  List<MapShape> _shapes = const [];
+
   MarkerRepository get _markers => ref.read(markerRepositoryProvider);
 
   CameraFit get _fitImage =>
@@ -107,6 +125,8 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
 
   @override
   void dispose() {
+    _routeHits.dispose();
+    _areaHits.dispose();
     _flight?.dispose();
     _focusTimer?.cancel();
     _controller.dispose();
@@ -298,8 +318,13 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
       ..showSnackBar(SnackBar(content: Text(message), action: action));
   }
 
+  /// Moving a marker, drawing or editing points: modes that use taps on the
+  /// map for themselves.
+  bool get _inMode =>
+      _moving != null || _drawingKind != null || _editingShape != null;
+
   Future<void> _onLongPress(TapPosition _, LatLng point) async {
-    if (_moving != null || _drawingKind != null) return;
+    if (_inMode) return;
     if (!_mapper.contains(point)) {
       _showMessage('Znacznik musi leżeć na mapie.');
       return;
@@ -312,6 +337,10 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
   }
 
   Future<void> _onTap(TapPosition tap, LatLng point) async {
+    if (_editingShape != null) {
+      setState(() => _selectedPoint = null);
+      return;
+    }
     if (_drawingKind != null) {
       if (!_mapper.contains(point)) {
         _showMessage('Punkt musi leżeć na mapie.');
@@ -338,7 +367,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
       );
       return;
     }
-    if (_moving != null) return;
+    if (_moving != null || _editingShape != null) return;
     final action = await showMarkerDetails(
       context,
       marker,
@@ -398,6 +427,99 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
     return nearest ?? point;
   }
 
+  /// [point] snapped to a marker within [_snapRadius] of [screen], if
+  /// snapping is on; used when a dragged point is let go.
+  LatLng _snapAt(Offset screen, LatLng point) {
+    if (!ref.read(settingsProvider).snapToMarkers) return point;
+    final camera = _controller.camera;
+    for (final m in _visibleMarkers) {
+      final at = _mapper.toLatLng(Offset(m.x, m.y));
+      if ((camera.latLngToScreenOffset(at) - screen).distance <= _snapRadius) {
+        return at;
+      }
+    }
+    return point;
+  }
+
+  LatLng _clampToImage(LatLng point) {
+    final n = _mapper.toNormalized(point);
+    return _mapper.toLatLng(Offset(n.dx.clamp(0, 1), n.dy.clamp(0, 1)));
+  }
+
+  Future<void> _onShapeTap(LayerHitResult<String>? hit) async {
+    final id = hit?.hitValues.firstOrNull;
+    if (id == null || _inMode) return;
+    final shape = _shapes.where((s) => s.id == id).firstOrNull;
+    if (shape == null) return;
+
+    final action = await showShapeDetails(
+      context,
+      shape,
+      colorName: _legend.nameOf(shape.colorValue),
+    );
+    if (!mounted || action == null) return;
+    final shapes = ref.read(shapeRepositoryProvider);
+    switch (action) {
+      case ShapeAction.edit:
+        final style = await showShapeEditor(
+          context,
+          kind: shape.kind,
+          initial: shape.style,
+          colorNames: _legend.names,
+        );
+        if (style == null) return;
+        await shapes.updateStyle(shape.id, style);
+        await _revealColor(style.colorValue);
+      case ShapeAction.editPoints:
+        setState(() {
+          _editingShape = shape;
+          _selectedPoint = null;
+          _editPoints
+            ..clear()
+            ..addAll(shape.points.map(_mapper.toLatLng));
+        });
+      case ShapeAction.delete:
+        await shapes.remove(shape.id);
+        if (!mounted) return;
+        final kind = shape.kind == ShapeKind.route ? 'trasę' : 'obszar';
+        _showMessage(
+          shape.name == null
+              ? 'Usunięto $kind'
+              : 'Usunięto $kind „${shape.name}”',
+          action: SnackBarAction(
+            label: 'Cofnij',
+            onPressed: () => shapes.restore(shape),
+          ),
+        );
+    }
+  }
+
+  void _stopEditingPoints() => setState(() {
+    _editingShape = null;
+    _editPoints.clear();
+    _selectedPoint = null;
+  });
+
+  Future<void> _saveEditedPoints() async {
+    final shape = _editingShape;
+    if (shape == null) return;
+    await ref.read(shapeRepositoryProvider).updatePoints(shape.id, shape.kind, [
+      for (final p in _editPoints) _mapper.toNormalized(p),
+    ]);
+    if (mounted) _stopEditingPoints();
+  }
+
+  void _deleteSelectedPoint() {
+    final index = _selectedPoint;
+    final shape = _editingShape;
+    if (index == null || shape == null) return;
+    if (_editPoints.length <= shape.kind.minPoints) return;
+    setState(() {
+      _editPoints.removeAt(index);
+      _selectedPoint = null;
+    });
+  }
+
   void _startDrawing(ShapeKind kind) => setState(() {
     _moving = null;
     _drawingKind = kind;
@@ -427,7 +549,14 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
     await _revealColor(style.colorValue);
   }
 
-  List<Widget> _shapeLayers(List<MapShape> shapes, AppSettings settings) {
+  List<Widget> _shapeLayers(List<MapShape> allShapes, AppSettings settings) {
+    final editing = _editingShape;
+    // The shape being edited is drawn from its working copy instead.
+    final shapes = [
+      for (final s in allShapes)
+        if (s.id != editing?.id) s,
+    ];
+    final interactive = !_inMode;
     List<LatLng> latLngs(MapShape s) => [
       for (final p in s.points) _mapper.toLatLng(p),
     ];
@@ -452,15 +581,70 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
             routeLabel(r.id, midpointAlong(latLngs(r)), name),
     ];
     return [
-      if (areas.isNotEmpty) PolygonLayer<String>(polygons: areas),
+      if (areas.isNotEmpty)
+        _tappable(
+          interactive,
+          _areaHits,
+          PolygonLayer<String>(
+            polygons: areas,
+            hitNotifier: interactive ? _areaHits : null,
+          ),
+        ),
       if (routes.isNotEmpty)
-        PolylineLayer<String>(
-          polylines: [
-            for (final r in routes)
-              routePolyline(latLngs(r), r.style, hitValue: r.id),
-          ],
+        _tappable(
+          interactive,
+          _routeHits,
+          PolylineLayer<String>(
+            hitNotifier: interactive ? _routeHits : null,
+            // Easier to hit a thin line with a finger.
+            minimumHitbox: 20,
+            polylines: [
+              for (final r in routes)
+                routePolyline(latLngs(r), r.style, hitValue: r.id),
+            ],
+          ),
         ),
       if (routeLabels.isNotEmpty) MarkerLayer(markers: routeLabels),
+    ];
+  }
+
+  /// Makes a shape layer open the tapped shape's details, outside modes.
+  Widget _tappable(
+    bool interactive,
+    ValueNotifier<LayerHitResult<String>?> hits,
+    Widget layer,
+  ) => interactive
+      ? GestureDetector(onTap: () => _onShapeTap(hits.value), child: layer)
+      : layer;
+
+  /// The shape whose points are being edited, with handles to change them.
+  List<Widget> _editingLayers(MapShape shape) {
+    final points = _editPoints;
+    final color = Color(shape.colorValue);
+    return [
+      if (shape.kind == ShapeKind.area)
+        PolygonLayer(
+          polygons: [areaPolygon(points, shape.style, showName: false)],
+        )
+      else
+        PolylineLayer(polylines: [routePolyline(points, shape.style)]),
+      ShapePointHandles(
+        points: points,
+        closed: shape.kind == ShapeKind.area,
+        color: color,
+        selected: _selectedPoint,
+        onSelect: (i) => setState(() => _selectedPoint = i),
+        onMove: (i, to) => setState(() {
+          _editPoints[i] = _clampToImage(to);
+          _selectedPoint = i;
+        }),
+        onMoveEnd: (i, screen) =>
+            setState(() => _editPoints[i] = _snapAt(screen, _editPoints[i])),
+        onInsert: (i, at) => setState(() {
+          _editPoints.insert(i, at);
+          _selectedPoint = i;
+        }),
+      ),
     ];
   }
 
@@ -563,14 +747,17 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
     final shapes =
         ref.watch(shapesProvider(widget.project.id)).value ?? const [];
     final settings = ref.watch(settingsProvider);
+    final editingShape = _editingShape;
     _visibleMarkers = markers;
+    _shapes = shapes;
 
     return PopScope(
       // Back leaves drawing or moving first, not the map.
-      canPop: moving == null && drawingKind == null,
+      canPop: moving == null && drawingKind == null && editingShape == null,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (drawingKind != null) _stopDrawing();
+        if (editingShape != null) _stopEditingPoints();
         if (moving != null) setState(() => _moving = null);
       },
       child: Scaffold(
@@ -588,7 +775,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
             ),
             IconButton(
               tooltip: 'Lista znaczników',
-              onPressed: moving == null && drawingKind == null
+              onPressed: !_inMode
                   ? () =>
                         _openMarkerList(markers, hiddenByFilter: hiddenByFilter)
                   : null,
@@ -674,6 +861,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
                     ..._shapeLayers(shapes, settings),
                     if (drawingKind != null)
                       ..._drawingLayers(context, drawingKind),
+                    if (editingShape != null) ..._editingLayers(editingShape),
                     ClusteredMarkerLayer(
                       markers: markers,
                       positionOf: (m) => _mapper.toLatLng(Offset(m.x, m.y)),
@@ -693,6 +881,21 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
                 );
               },
             ),
+            if (editingShape != null)
+              Positioned(
+                top: 8,
+                left: 8,
+                right: 8,
+                child: _EditPointsBanner(
+                  onDeletePoint:
+                      _selectedPoint != null &&
+                          _editPoints.length > editingShape.kind.minPoints
+                      ? _deleteSelectedPoint
+                      : null,
+                  onCancel: _stopEditingPoints,
+                  onDone: _saveEditedPoints,
+                ),
+              ),
             if (drawingKind != null)
               Positioned(
                 top: 8,
@@ -724,14 +927,59 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
               right: 16,
               bottom: 16,
               child: _MapControls(
-                onDraw: moving == null && drawingKind == null
-                    ? _startDrawing
-                    : null,
+                onDraw: !_inMode ? _startDrawing : null,
                 onZoomIn: () => _zoomBy(1),
                 onZoomOut: () => _zoomBy(-1),
                 onFit: () => _controller.fitCamera(_fitImage),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EditPointsBanner extends StatelessWidget {
+  const _EditPointsBanner({
+    required this.onDeletePoint,
+    required this.onCancel,
+    required this.onDone,
+  });
+
+  /// Null unless a point is selected and the shape can lose one.
+  final VoidCallback? onDeletePoint;
+  final VoidCallback onCancel;
+  final VoidCallback onDone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 4, 4),
+        child: Row(
+          children: [
+            const Icon(Icons.polyline_outlined),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Przeciągnij punkt lub stuknij środek odcinka',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Usuń punkt',
+              onPressed: onDeletePoint,
+              icon: const Icon(Icons.delete_outline),
+            ),
+            IconButton(
+              tooltip: 'Anuluj zmiany',
+              onPressed: onCancel,
+              icon: const Icon(Icons.close),
+            ),
+            FilledButton(onPressed: onDone, child: const Text('Gotowe')),
           ],
         ),
       ),

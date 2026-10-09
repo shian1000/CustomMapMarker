@@ -307,6 +307,27 @@ void main() {
       );
     });
 
+    test('updates style and points', () async {
+      final mapId = await importTestMap();
+      final s = await shapes.add(mapId, ShapeKind.route, route, style);
+      await shapes.updateStyle(
+        s.id,
+        const ShapeStyle(name: 'Nowa', colorValue: 1, width: ShapeWidth.thin),
+      );
+      const moved = [Offset(0.5, 0.5), Offset(0.6, 0.6)];
+      await shapes.updatePoints(s.id, ShapeKind.route, moved);
+      final updated = (await shapes.watchShapes(mapId).first).single;
+      expect(
+        (updated.name, updated.style.description, updated.style.width),
+        ('Nowa', null, ShapeWidth.thin),
+      );
+      expect(updated.points, moved);
+      expect(
+        () => shapes.updatePoints(s.id, ShapeKind.area, moved),
+        throwsArgumentError,
+      );
+    });
+
     test('keeps maps apart, removes and restores', () async {
       final a = await importTestMap();
       final b = await importTestMap();

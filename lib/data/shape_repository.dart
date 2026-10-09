@@ -43,6 +43,29 @@ class ShapeRepository {
     return shape;
   }
 
+  Future<void> updateStyle(String id, ShapeStyle style) => _update(
+    id,
+    ShapesCompanion(
+      name: Value(style.name),
+      description: Value(style.description),
+      colorValue: Value(style.colorValue),
+      strokeWidth: Value(style.width.index),
+      dashed: Value(style.dashed),
+      fillOpacity: Value(style.fillOpacity),
+    ),
+  );
+
+  /// Replaces the points of shape [id] of the given [kind].
+  Future<void> updatePoints(String id, ShapeKind kind, List<Offset> points) {
+    if (points.length < kind.minPoints) {
+      throw ArgumentError('A ${kind.name} needs ${kind.minPoints} points');
+    }
+    return _update(id, ShapesCompanion(points: Value(encodePoints(points))));
+  }
+
+  Future<void> _update(String id, ShapesCompanion changes) =>
+      (_db.update(_db.shapes)..where((s) => s.id.equals(id))).write(changes);
+
   Future<void> remove(String id) =>
       (_db.delete(_db.shapes)..where((s) => s.id.equals(id))).go();
 
