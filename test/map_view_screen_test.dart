@@ -3,6 +3,7 @@ import 'package:custom_map_marker/data/legend.dart';
 import 'package:custom_map_marker/data/map_marker.dart';
 import 'package:custom_map_marker/data/map_project.dart';
 import 'package:custom_map_marker/data/providers.dart';
+import 'package:custom_map_marker/features/map_view/clustered_marker_layer.dart';
 import 'package:custom_map_marker/features/map_view/map_view_screen.dart';
 import 'package:custom_map_marker/shared/marker_colors.dart';
 import 'package:custom_map_marker/shared/widgets/marker_pin.dart';
@@ -182,9 +183,10 @@ void main() {
   group('legend filter', () {
     final red = markerColors[0].toARGB32();
     final green = markerColors[3].toARGB32();
+    // Far apart, so they are never grouped.
     final markers = [
-      testMarker('1', 'Wyzima', color: red),
-      testMarker('2', 'Las', color: green),
+      testMarker('1', 'Wyzima', color: red, x: 0.1, y: 0.1),
+      testMarker('2', 'Las', color: green, x: 0.9, y: 0.9),
     ];
 
     testWidgets('hides markers of hidden colors and flags the filter', (
@@ -242,6 +244,78 @@ void main() {
         find.text('Kolor „Miasta” był ukryty filtrem – znów jest widoczny.'),
         findsOneWidget,
       );
+    });
+  });
+
+  group('clustering', () {
+    // Close together on a 4000 px wide image: overlap when zoomed out.
+    final close = [
+      testMarker('1', 'Wyzima', color: 0xFFE53935, x: 0.50, y: 0.50),
+      testMarker('2', 'Oxenfurt', color: 0xFFE53935, x: 0.505, y: 0.50),
+      testMarker('3', 'Novigrad', color: 0xFF1E88E5, x: 0.51, y: 0.505),
+    ];
+    final lone = testMarker(
+      '4',
+      'Kaer Morhen',
+      color: 0xFF43A047,
+      x: 0.9,
+      y: 0.1,
+    );
+
+    testWidgets('groups overlapping markers into a counted circle', (
+      tester,
+    ) async {
+      await pumpMap(
+        tester,
+        width: 4000,
+        height: 3000,
+        markers: [...close, lone],
+      );
+      final badge = tester.widget<MarkerClusterBadge>(
+        find.byType(MarkerClusterBadge),
+      );
+      expect(badge.count, 3);
+      // Mixed colors: neutral circle.
+      expect(badge.color, isNull);
+      expect(find.byType(MarkerPin), findsOneWidget);
+      expect(find.text('Kaer Morhen'), findsOneWidget);
+    });
+
+    testWidgets('tapping a cluster zooms in until it splits', (tester) async {
+      final camera = await pumpMap(
+        tester,
+        width: 4000,
+        height: 3000,
+        markers: [...close, lone],
+      );
+      final before = camera().zoom;
+      await tester.tap(find.byType(MarkerClusterBadge));
+      await tester.pumpAndSettle();
+      expect(camera().zoom, greaterThan(before + 1));
+      expect(find.text('Wyzima'), findsOneWidget);
+      expect(find.text('Novigrad'), findsOneWidget);
+    });
+
+    testWidgets('shows every marker at full resolution', (tester) async {
+      final camera = await pumpMap(
+        tester,
+        width: 4000,
+        height: 3000,
+        markers: [
+          ...close,
+          // Exactly on top of Wyzima: only separable by not clustering.
+          testMarker('5', 'Wyzima 2', color: 0xFFE53935, x: 0.50, y: 0.50),
+        ],
+      );
+      final native = MapCoordinateMapper(
+        widthPx: 4000,
+        heightPx: 3000,
+      ).nativeZoom;
+      MapController.of(tester.element(find.byType(MarkerLayer)))
+          .move(camera().center, native);
+      await tester.pump();
+      expect(find.byType(MarkerClusterBadge), findsNothing);
+      expect(find.byType(MarkerPin), findsNWidgets(4));
     });
   });
 }

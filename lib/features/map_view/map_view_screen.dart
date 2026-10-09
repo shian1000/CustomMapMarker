@@ -23,6 +23,7 @@ import '../legend/legend_sheet.dart';
 import '../maps_list/map_dialogs.dart';
 import '../marker_list/marker_list_sheet.dart';
 import '../marker_editor/marker_editor_sheet.dart';
+import 'clustered_marker_layer.dart';
 import 'local_tile_provider.dart';
 
 class MapViewScreen extends ConsumerStatefulWidget {
@@ -117,10 +118,11 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
   /// Smoothly moves the camera to [target], zooming in if the map is shown
   /// too far out to make out the spot. flutter_map has no camera animation of
   /// its own, so this interpolates center and zoom frame by frame.
-  Future<void> _flyTo(LatLng target) async {
+  /// [zoom] defaults to a close-up of the spot.
+  Future<void> _flyTo(LatLng target, {double? zoom}) async {
     final camera = _controller.camera;
     final closeUp = _mapper.fitZoom(camera.nonRotatedSize) + _flyToZoomIn;
-    final endZoom = max(camera.zoom, closeUp).clamp(
+    final endZoom = (zoom ?? max(camera.zoom, closeUp)).clamp(
       camera.minZoom ?? double.negativeInfinity,
       camera.maxZoom ?? double.infinity,
     );
@@ -168,6 +170,23 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
           ? 'Ten kolor był ukryty filtrem – znów jest widoczny.'
           : 'Kolor „$name” był ukryty filtrem – znów jest widoczny.',
     );
+  }
+
+  /// Zooms so a cluster's members spread out; if they sit on (nearly) the
+  /// same spot, zooms to full resolution, where nothing is clustered.
+  Future<void> _zoomToCluster(List<MapMarker> members) {
+    final points = [
+      for (final m in members) _mapper.toLatLng(Offset(m.x, m.y)),
+    ];
+    final camera = _controller.camera;
+    final fitted = CameraFit.coordinates(
+      coordinates: points,
+      padding: const EdgeInsets.all(MarkerPin.width / 2),
+      maxZoom: _mapper.nativeZoom,
+    ).fit(camera);
+    // Always zoom in by at least one level so the tap visibly does something.
+    final zoom = max(fitted.zoom, min(camera.zoom + 1, _mapper.nativeZoom));
+    return _flyTo(fitted.center, zoom: zoom);
   }
 
   void _zoomBy(double delta) {
@@ -366,26 +385,20 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
                 ),
                 children: [
                   _imageLayer(context),
-                  MarkerLayer(
-                    alignment: Alignment.topCenter,
-                    markers: [
-                      for (final m in markers)
-                        Marker(
-                          key: ValueKey(m.id),
-                          point: _mapper.toLatLng(Offset(m.x, m.y)),
-                          width: MarkerPin.width,
-                          height: MarkerPin.height,
-                          child: MarkerPin(
-                            label: m.label,
-                            color: Color(m.colorValue),
-                            icon: markerIconFor(m.icon)?.icon,
-                            highlighted:
-                                m.id == moving?.id || m.id == _focusedId,
-                            emphasized: m.id == _focusedId,
-                            onTap: () => _onMarkerTap(m),
-                          ),
-                        ),
-                    ],
+                  ClusteredMarkerLayer(
+                    markers: markers,
+                    positionOf: (m) => _mapper.toLatLng(Offset(m.x, m.y)),
+                    clusterBelowZoom: _mapper.nativeZoom,
+                    neverCluster: {?moving?.id, ?_focusedId},
+                    onClusterTap: _zoomToCluster,
+                    pinBuilder: (m) => MarkerPin(
+                      label: m.label,
+                      color: Color(m.colorValue),
+                      icon: markerIconFor(m.icon)?.icon,
+                      highlighted: m.id == moving?.id || m.id == _focusedId,
+                      emphasized: m.id == _focusedId,
+                      onTap: () => _onMarkerTap(m),
+                    ),
                   ),
                 ],
               );
