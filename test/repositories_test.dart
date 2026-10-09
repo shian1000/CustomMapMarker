@@ -93,6 +93,15 @@ void main() {
       );
     });
 
+    test('sets and removes the scale', () async {
+      final id = await importTestMap();
+      expect((await maps.watchMaps().first).single.map.metersPerPixel, isNull);
+      await maps.setScale(id, 12.5);
+      expect((await maps.watchMaps().first).single.map.metersPerPixel, 12.5);
+      await maps.setScale(id, null);
+      expect((await maps.watchMaps().first).single.map.metersPerPixel, isNull);
+    });
+
     test('renames a map', () async {
       final id = await importTestMap();
       await maps.rename(id, 'Temeria');

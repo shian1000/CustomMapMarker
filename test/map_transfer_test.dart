@@ -54,7 +54,14 @@ void main() {
   Future<MapProject> mapWithContent() async {
     final src = File(p.join(docs.path, 'src.png'))
       ..writeAsBytesSync(img.encodePng(img.Image(width: 40, height: 30)));
-    final map = await maps.importImage(src.path, name: 'Świat: Wiedźmin/2');
+    final imported = await maps.importImage(
+      src.path,
+      name: 'Świat: Wiedźmin/2',
+    );
+    await maps.setScale(imported.id, 1500);
+    final map = (await maps.watchMaps().first)
+        .singleWhere((s) => s.map.id == imported.id)
+        .map;
     await markers.add(
       map.id,
       const Offset(0.25, 0.75),
@@ -136,6 +143,11 @@ void main() {
       ('Świat: Wiedźmin/2', 40, 30),
     );
     expect(File(copy.imagePath).existsSync(), isTrue);
+    final copyScale = (await maps.watchMaps().first)
+        .singleWhere((s) => s.map.id == copy.id)
+        .map
+        .metersPerPixel;
+    expect(copyScale, 1500);
 
     final copied = await markers.watchMarkers(copy.id).first;
     final byLabel = {for (final m in copied) m.label: m};
@@ -337,5 +349,22 @@ void main() {
       'image.png': pngBytes,
     });
     expect(await importError(newer), MapArchiveError.newerVersion);
+  });
+
+  test('rejects a nonsensical scale', () async {
+    final path = writeZip({
+      'manifest.json': manifest({
+        'version': 2,
+        'map': {
+          'name': 'X',
+          'widthPx': 4,
+          'heightPx': 4,
+          'image': 'image.png',
+          'metersPerPixel': -3,
+        },
+      }),
+      'image.png': pngBytes,
+    });
+    expect(await importError(path), MapArchiveError.damaged);
   });
 }

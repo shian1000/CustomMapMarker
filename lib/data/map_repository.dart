@@ -196,6 +196,12 @@ class MapRepository {
     _db.maps,
   )..where((m) => m.id.equals(id))).write(MapsCompanion(name: Value(name)));
 
+  /// Sets the map's scale; null removes it.
+  Future<void> setScale(String id, double? metersPerPixel) =>
+      (_db.update(_db.maps)..where((m) => m.id.equals(id))).write(
+        MapsCompanion(metersPerPixel: Value(metersPerPixel)),
+      );
+
   /// Deletes the map, its markers and its stored image.
   Future<void> delete(String id) async {
     await (_db.delete(_db.maps)..where((m) => m.id.equals(id))).go();
@@ -214,5 +220,6 @@ class MapRepository {
     heightPx: row.heightPx,
     createdAt: row.createdAt,
     tileMaxZoom: row.tileMaxZoom,
+    metersPerPixel: row.metersPerPixel,
   );
 }

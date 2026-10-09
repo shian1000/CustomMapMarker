@@ -19,6 +19,7 @@ MapProject testMap(
   int width = 100,
   int height = 100,
   int? tileMaxZoom,
+  double? metersPerPixel,
 }) => MapProject(
   id: id,
   name: name,
@@ -27,6 +28,7 @@ MapProject testMap(
   heightPx: height,
   createdAt: DateTime(2026),
   tileMaxZoom: tileMaxZoom,
+  metersPerPixel: metersPerPixel,
 );
 
 /// In-memory stand-in for [MapRepository] that records calls.
@@ -65,6 +67,32 @@ class FakeMapRepository implements MapRepository {
           heightPx: old.heightPx,
           createdAt: old.createdAt,
           tileMaxZoom: old.tileMaxZoom,
+          metersPerPixel: old.metersPerPixel,
+        ),
+        markerCount: _maps[i].markerCount,
+      );
+      _changes.add(List.of(_maps));
+    }
+  }
+
+  final scales = <(String id, double? metersPerPixel)>[];
+
+  @override
+  Future<void> setScale(String id, double? metersPerPixel) async {
+    scales.add((id, metersPerPixel));
+    final i = _maps.indexWhere((s) => s.map.id == id);
+    if (i >= 0) {
+      final old = _maps[i].map;
+      _maps[i] = MapSummary(
+        map: MapProject(
+          id: old.id,
+          name: old.name,
+          imagePath: old.imagePath,
+          widthPx: old.widthPx,
+          heightPx: old.heightPx,
+          createdAt: old.createdAt,
+          tileMaxZoom: old.tileMaxZoom,
+          metersPerPixel: metersPerPixel,
         ),
         markerCount: _maps[i].markerCount,
       );

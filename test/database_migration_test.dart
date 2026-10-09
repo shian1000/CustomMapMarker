@@ -43,7 +43,7 @@ void main() {
         (marker.label, marker.x, marker.colorValue),
         ('Novigrad', 0.5, 4293212469),
       );
-      expect(raw.userVersion, 5);
+      expect(raw.userVersion, 6);
       await db
           .into(db.legend)
           .insert(
@@ -81,8 +81,9 @@ void main() {
     final db = AppDatabase(NativeDatabase.opened(raw));
     addTearDown(db.close);
 
-    expect((await db.select(db.maps).getSingle()).tileMaxZoom, 5);
+    final map = await db.select(db.maps).getSingle();
+    expect((map.tileMaxZoom, map.metersPerPixel), (5, null));
     expect(await db.select(db.legend).get(), isEmpty);
-    expect(raw.userVersion, 5);
+    expect(raw.userVersion, 6);
   });
 }

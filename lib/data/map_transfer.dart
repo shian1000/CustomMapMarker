@@ -60,6 +60,8 @@ class MapTransfer {
         'widthPx': map.widthPx,
         'heightPx': map.heightPx,
         'image': imageEntry,
+        // Optional, so files without it stay version 2.
+        'metersPerPixel': ?map.metersPerPixel,
       },
       'markers': [
         for (final m in mapMarkers)
@@ -140,6 +142,9 @@ class MapTransfer {
         onProgress: onProgress,
       );
       try {
+        if (manifest.metersPerPixel case final scale?) {
+          await maps.setScale(map.id, scale);
+        }
         await markers.insertAll([
           for (final m in manifest.markers)
             MapMarker(
@@ -234,9 +239,11 @@ class _Manifest {
     required this.markers,
     required this.legend,
     required this.shapes,
+    this.metersPerPixel,
   });
 
   final String name;
+  final double? metersPerPixel;
   final String imageEntry;
   final List<_ManifestMarker> markers;
   final MapLegend legend;
@@ -270,6 +277,14 @@ class _Manifest {
       return _Manifest(
         name: map['name']! as String,
         imageEntry: map['image']! as String,
+        metersPerPixel: switch ((map['metersPerPixel'] as num?)?.toDouble()) {
+          null => null,
+          final v when v > 0 && v.isFinite => v,
+          final v => throw MapArchiveException(
+            MapArchiveError.damaged,
+            'metersPerPixel=$v',
+          ),
+        },
         markers: [
           for (final m in (root['markers'] ?? const []) as List)
             _parseMarker(m as Map<String, Object?>),

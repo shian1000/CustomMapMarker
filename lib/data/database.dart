@@ -19,6 +19,10 @@ class Maps extends Table {
   /// null when the map is small enough to be drawn as a single image.
   IntColumn get tileMaxZoom => integer().nullable()();
 
+  /// Real-world meters per image pixel, set by calibrating the map's scale;
+  /// null until then.
+  RealColumn get metersPerPixel => real().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -100,7 +104,7 @@ class AppDatabase extends _$AppDatabase {
     : super(executor ?? driftDatabase(name: 'custom_map_marker'));
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -118,6 +122,9 @@ class AppDatabase extends _$AppDatabase {
       if (from < 5) {
         await m.createTable(shapes);
         await m.createIndex(shapesMapId);
+      }
+      if (from < 6) {
+        await m.addColumn(maps, maps.metersPerPixel);
       }
     },
     beforeOpen: (details) async {

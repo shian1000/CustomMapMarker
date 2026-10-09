@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/coordinate_mapper.dart';
+import '../../core/measure.dart';
 import '../../core/native_tile_renderer.dart';
 import '../../core/tile_pyramid.dart';
 import '../../data/legend.dart';
@@ -26,6 +27,8 @@ import '../../shared/widgets/marker_pin.dart';
 import '../marker_editor/marker_details_sheet.dart';
 import '../../core/plural.dart';
 import '../legend/legend_sheet.dart';
+import '../scale/scale_bar.dart';
+import '../scale/scale_dialog.dart';
 import '../settings/settings_screen.dart';
 import '../shape_editor/shape_details_sheet.dart';
 import '../shape_editor/shape_editor_sheet.dart';
@@ -94,6 +97,21 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
 
   /// While drawing, a tap within this distance of a marker lands on it.
   static const _snapRadius = 32.0;
+
+  /// Scale calibration or measuring in progress, null otherwise.
+  _Tool? _tool;
+
+  /// Points placed with [_tool], in map coordinates.
+  final _toolPoints = <LatLng>[];
+
+  /// The map's current scale (it can change while the screen is open).
+  double? _metersPerPixel;
+
+  MapMeasure get _measure => MapMeasure(
+    widthPx: widget.project.widthPx,
+    heightPx: widget.project.heightPx,
+    metersPerPixel: _metersPerPixel,
+  );
 
   /// Route or area whose points are being edited, null otherwise.
   MapShape? _editingShape;
@@ -350,7 +368,10 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
   /// Moving a marker, drawing or editing points: modes that use taps on the
   /// map for themselves.
   bool get _inMode =>
-      _moving != null || _drawingKind != null || _editingShape != null;
+      _moving != null ||
+      _drawingKind != null ||
+      _editingShape != null ||
+      _tool != null;
 
   Future<void> _onLongPress(TapPosition _, LatLng point) async {
     if (_inMode) return;
@@ -366,6 +387,14 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
   }
 
   Future<void> _onTap(TapPosition tap, LatLng point) async {
+    if (_tool != null) {
+      if (!_mapper.contains(point)) {
+        _showMessage('Punkt musi leżeć na mapie.');
+        return;
+      }
+      await _addToolPoint(_snapToMarker(tap, point));
+      return;
+    }
     if (_editingShape != null) {
       setState(() => _selectedPoint = null);
       return;
@@ -389,6 +418,10 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
   }
 
   Future<void> _onMarkerTap(MapMarker marker) async {
+    if (_tool != null) {
+      await _addToolPoint(_mapper.toLatLng(Offset(marker.x, marker.y)));
+      return;
+    }
     if (_drawingKind != null) {
       // Tapping a pin while drawing means "go through this place".
       setState(
@@ -485,6 +518,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
       context,
       shape,
       colorName: _legend.nameOf(shape.colorValue),
+      measurement: _measurementOf(shape),
     );
     if (!mounted || action == null) return;
     final shapes = ref.read(shapeRepositoryProvider);
@@ -547,6 +581,114 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
       _editPoints.removeAt(index);
       _selectedPoint = null;
     });
+  }
+
+  void _startTool(_Tool tool) => setState(() {
+    _tool = tool;
+    _toolPoints.clear();
+  });
+
+  void _stopTool() => setState(() {
+    _tool = null;
+    _toolPoints.clear();
+  });
+
+  Future<void> _addToolPoint(LatLng point) async {
+    setState(() => _toolPoints.add(point));
+    if (_tool == _Tool.calibrate && _toolPoints.length == 2) {
+      await _finishCalibration();
+    }
+  }
+
+  Future<void> _finishCalibration() async {
+    final pixels = _measure.lengthPx([
+      for (final p in _toolPoints) _mapper.toNormalized(p),
+    ]);
+    if (pixels < 1) {
+      _showMessage('Wskaż dwa różne punkty.');
+      setState(_toolPoints.removeLast);
+      return;
+    }
+    final meters = await showScaleDialog(context);
+    if (!mounted) return;
+    if (meters == null) {
+      // Let the user pick the two points again.
+      setState(_toolPoints.clear);
+      return;
+    }
+    await ref
+        .read(mapRepositoryProvider)
+        .setScale(widget.project.id, meters / pixels);
+    if (!mounted) return;
+    _stopTool();
+    _showMessage('Skala zapisana');
+  }
+
+  Future<void> _removeScale() async {
+    await ref.read(mapRepositoryProvider).setScale(widget.project.id, null);
+    if (mounted) _showMessage('Usunięto skalę mapy');
+  }
+
+  /// Length, or area and perimeter, of [shape] for its details; null
+  /// without a scale.
+  String? _measurementOf(MapShape shape) {
+    final measure = _measure;
+    if (!measure.hasScale) return null;
+    if (shape.kind == ShapeKind.route) {
+      return 'Długość: ${formatDistance(measure.lengthMeters(shape.points)!)}';
+    }
+    final area = formatArea(measure.areaSquareMeters(shape.points)!);
+    final perimeter = formatDistance(
+      measure.lengthMeters(shape.points, closed: true)!,
+    );
+    return 'Powierzchnia: $area · obwód $perimeter';
+  }
+
+  /// Total distance along the measuring points, for the banner.
+  String _measuredText() {
+    final points = [for (final p in _toolPoints) _mapper.toNormalized(p)];
+    final measure = _measure;
+    if (points.length < 2) return 'stuknij punkty na mapie';
+    final meters = measure.lengthMeters(points);
+    return meters == null
+        ? '${formatPixels(measure.lengthPx(points))} (ustaw skalę mapy)'
+        : formatDistance(meters);
+  }
+
+  /// The points placed with the scale or measuring tool.
+  List<Widget> _toolLayers(BuildContext context) {
+    final color = Theme.of(context).colorScheme.tertiary;
+    final points = _toolPoints;
+    return [
+      if (points.length >= 2)
+        PolylineLayer(
+          polylines: [
+            routePolyline(
+              points,
+              ShapeStyle(colorValue: color.toARGB32(), dashed: true),
+            ),
+          ],
+        ),
+      MarkerLayer(
+        markers: [
+          for (final p in points)
+            Marker(
+              point: p,
+              width: 16,
+              height: 16,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: color, width: 3),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    ];
   }
 
   void _startDrawing(ShapeKind kind) => setState(() {
@@ -752,16 +894,18 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Live name, so a rename shows up right away.
-    final name =
+    // Live name and scale, so changes show up right away.
+    final liveMap =
         ref
             .watch(mapsProvider)
             .value
             ?.where((s) => s.map.id == widget.project.id)
             .firstOrNull
-            ?.map
-            .name ??
-        widget.project.name;
+            ?.map ??
+        widget.project;
+    final name = liveMap.name;
+    final metersPerPixel = _metersPerPixel = liveMap.metersPerPixel;
+    final tool = _tool;
     final legend =
         ref.watch(legendProvider(widget.project.id)).value ?? const {};
     final allMarkers =
@@ -803,9 +947,14 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
 
     return PopScope(
       // Back leaves drawing or moving first, not the map.
-      canPop: moving == null && drawingKind == null && editingShape == null,
+      canPop:
+          moving == null &&
+          drawingKind == null &&
+          editingShape == null &&
+          tool == null,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        if (tool != null) _stopTool();
         if (drawingKind != null) _stopDrawing();
         if (editingShape != null) _stopEditingPoints();
         if (moving != null) setState(() => _moving = null);
@@ -848,9 +997,11 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
                   visibleShapes: shapes,
                 ),
                 _MapAction.settings => openSettings(context),
+                _MapAction.setScale => _startTool(_Tool.calibrate),
+                _MapAction.removeScale => _removeScale(),
               },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
+              itemBuilder: (context) => [
+                const PopupMenuItem(
                   value: _MapAction.rename,
                   child: ListTile(
                     leading: Icon(Icons.edit_outlined),
@@ -858,13 +1009,33 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
                   ),
                 ),
                 PopupMenuItem(
+                  value: _MapAction.setScale,
+                  enabled: !_inMode,
+                  child: ListTile(
+                    leading: const Icon(Icons.straighten),
+                    title: Text(
+                      metersPerPixel == null
+                          ? 'Ustaw skalę mapy'
+                          : 'Zmień skalę mapy',
+                    ),
+                  ),
+                ),
+                if (metersPerPixel != null)
+                  const PopupMenuItem(
+                    value: _MapAction.removeScale,
+                    child: ListTile(
+                      leading: Icon(Icons.backspace_outlined),
+                      title: Text('Usuń skalę'),
+                    ),
+                  ),
+                const PopupMenuItem(
                   value: _MapAction.saveImage,
                   child: ListTile(
                     leading: Icon(Icons.image_outlined),
                     title: Text('Zapisz jako obraz'),
                   ),
                 ),
-                PopupMenuItem(
+                const PopupMenuItem(
                   value: _MapAction.settings,
                   child: ListTile(
                     leading: Icon(Icons.settings_outlined),
@@ -919,6 +1090,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
                     if (drawingKind != null)
                       ..._drawingLayers(context, drawingKind),
                     if (editingShape != null) ..._editingLayers(editingShape),
+                    if (tool != null) ..._toolLayers(context),
                     ClusteredMarkerLayer(
                       markers: markers,
                       positionOf: (m) => _mapper.toLatLng(Offset(m.x, m.y)),
@@ -934,10 +1106,32 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
                         onTap: () => _onMarkerTap(m),
                       ),
                     ),
+                    if (metersPerPixel != null)
+                      ScaleBar(
+                        metersPerPixel: metersPerPixel,
+                        nativeZoom: _mapper.nativeZoom,
+                      ),
                   ],
                 );
               },
             ),
+            if (tool != null)
+              Positioned(
+                top: 8,
+                left: 8,
+                right: 8,
+                child: _ToolBanner(
+                  icon: Icons.straighten,
+                  text: tool == _Tool.calibrate
+                      ? 'Skala: wskaż dwa punkty o znanej odległości '
+                            '(${_toolPoints.length}/2)'
+                      : 'Odległość: ${_measuredText()}',
+                  onUndo: tool == _Tool.measure && _toolPoints.isNotEmpty
+                      ? () => setState(_toolPoints.removeLast)
+                      : null,
+                  onClose: _stopTool,
+                ),
+              ),
             if (editingShape != null)
               Positioned(
                 top: 8,
@@ -985,10 +1179,52 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen>
               bottom: 16,
               child: _MapControls(
                 onDraw: !_inMode ? _startDrawing : null,
+                onMeasure: !_inMode ? () => _startTool(_Tool.measure) : null,
                 onZoomIn: () => _zoomBy(1),
                 onZoomOut: () => _zoomBy(-1),
                 onFit: () => _controller.fitCamera(_fitImage),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolBanner extends StatelessWidget {
+  const _ToolBanner({
+    required this.icon,
+    required this.text,
+    required this.onUndo,
+    required this.onClose,
+  });
+
+  final IconData icon;
+  final String text;
+  final VoidCallback? onUndo;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 4, 4),
+        child: Row(
+          children: [
+            Icon(icon),
+            const SizedBox(width: 12),
+            Expanded(child: Text(text, maxLines: 2)),
+            if (onUndo != null)
+              IconButton(
+                tooltip: 'Cofnij punkt',
+                onPressed: onUndo,
+                icon: const Icon(Icons.undo),
+              ),
+            IconButton(
+              tooltip: 'Zamknij',
+              onPressed: onClose,
+              icon: const Icon(Icons.close),
             ),
           ],
         ),
@@ -1124,6 +1360,7 @@ class _MoveBanner extends StatelessWidget {
 class _MapControls extends StatelessWidget {
   const _MapControls({
     required this.onDraw,
+    required this.onMeasure,
     required this.onZoomIn,
     required this.onZoomOut,
     required this.onFit,
@@ -1131,6 +1368,9 @@ class _MapControls extends StatelessWidget {
 
   /// Starts drawing a route or area; null while that's not possible.
   final ValueChanged<ShapeKind>? onDraw;
+
+  /// Starts measuring distances; null while that's not possible.
+  final VoidCallback? onMeasure;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
   final VoidCallback onFit;
@@ -1163,6 +1403,11 @@ class _MapControls extends StatelessWidget {
               ),
             ],
           ),
+          IconButton(
+            tooltip: 'Zmierz',
+            onPressed: onMeasure,
+            icon: const Icon(Icons.straighten),
+          ),
           const Divider(height: 1, indent: 8, endIndent: 8),
           IconButton(
             tooltip: 'Przybliż',
@@ -1186,4 +1431,6 @@ class _MapControls extends StatelessWidget {
   }
 }
 
-enum _MapAction { rename, saveImage, settings }
+enum _MapAction { rename, setScale, removeScale, saveImage, settings }
+
+enum _Tool { calibrate, measure }

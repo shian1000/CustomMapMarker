@@ -11,6 +11,7 @@ class MapProject {
     required this.heightPx,
     required this.createdAt,
     this.tileMaxZoom,
+    this.metersPerPixel,
   });
 
   final String id;
@@ -26,6 +27,9 @@ class MapProject {
   final int? tileMaxZoom;
 
   bool get isTiled => tileMaxZoom != null;
+
+  /// Real-world meters per image pixel; null until the scale is set.
+  final double? metersPerPixel;
 
   /// Directory holding the tile pyramid of a tiled map.
   String get tilesDir => p.join(p.dirname(imagePath), 'tiles');

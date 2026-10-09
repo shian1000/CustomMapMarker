@@ -7,6 +7,7 @@ import 'package:custom_map_marker/data/settings.dart';
 import 'package:custom_map_marker/data/providers.dart';
 import 'package:custom_map_marker/features/map_view/clustered_marker_layer.dart';
 import 'package:custom_map_marker/features/map_view/map_view_screen.dart';
+import 'package:custom_map_marker/features/scale/scale_bar.dart';
 import 'package:custom_map_marker/shared/marker_colors.dart';
 import 'package:custom_map_marker/shared/widgets/marker_pin.dart';
 import 'package:flutter/material.dart';
@@ -37,6 +38,7 @@ void main() {
     MapLegend legend = const {},
     List<MapShape> shapes = const [],
     AppSettings settings = const AppSettings(),
+    double? metersPerPixel,
   }) async {
     // Same logical size as the test phone (1080x2340 @ 2.75).
     tester.view.physicalSize = const Size(1080, 2340);
@@ -48,6 +50,7 @@ void main() {
       width: width,
       height: height,
       tileMaxZoom: tileMaxZoom,
+      metersPerPixel: metersPerPixel,
     );
     repo = FakeMapRepository([MapSummary(map: project, markerCount: 0)]);
     await tester.pumpWidget(
@@ -752,6 +755,85 @@ void main() {
       for (final p in area.points) {
         expect(camera().visibleBounds.contains(mapper.toLatLng(p)), isTrue);
       }
+    });
+  });
+
+  group('scale and measuring', () {
+    Future<void> tapMap(WidgetTester tester, Offset at) async {
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    Offset screenOf(WidgetTester tester, Offset normalized) {
+      final camera = MapCamera.of(
+        tester.element(find.byType(ClusteredMarkerLayer)),
+      );
+      final latLng = MapCoordinateMapper(
+        widthPx: 1000,
+        heightPx: 800,
+      ).toLatLng(normalized);
+      return tester.getTopLeft(find.byType(FlutterMap)) +
+          camera.latLngToScreenOffset(latLng);
+    }
+
+    testWidgets('calibrates the scale from two points', (tester) async {
+      await pumpMap(tester, width: 1000, height: 800);
+      expect(find.byType(ScaleBar), findsNothing);
+
+      await tester.tap(find.byTooltip('Więcej'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ustaw skalę mapy'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('(0/2)'), findsOneWidget);
+
+      // 500 px apart on a 1000 px wide image.
+      await tapMap(tester, screenOf(tester, const Offset(0.25, 0.5)));
+      await tapMap(tester, screenOf(tester, const Offset(0.75, 0.5)));
+      await tester.pumpAndSettle();
+      expect(find.text('Skala mapy'), findsOneWidget);
+      await tester.enterText(find.byType(TextFormField), '100');
+      await tester.tap(find.text('Zapisz'));
+      await tester.pumpAndSettle();
+
+      final (id, metersPerPixel) = repo.scales.single;
+      expect(id, 'map');
+      expect(metersPerPixel, closeTo(100000 / 500, 0.5));
+      expect(find.text('Skala zapisana'), findsOneWidget);
+      expect(find.byType(ScaleBar), findsOneWidget);
+    });
+
+    testWidgets('measures a distance with the ruler', (tester) async {
+      await pumpMap(tester, width: 1000, height: 800, metersPerPixel: 10);
+      await tester.tap(find.byTooltip('Zmierz'));
+      await tester.pump();
+      await tapMap(tester, screenOf(tester, const Offset(0.1, 0.5)));
+      await tapMap(tester, screenOf(tester, const Offset(0.6, 0.5)));
+      // ~500 px × 10 m.
+      expect(find.textContaining('Odległość: 5 km'), findsOneWidget);
+      await tester.tap(find.byTooltip('Cofnij punkt'));
+      await tester.pump();
+      expect(find.text('Odległość: stuknij punkty na mapie'), findsOneWidget);
+      await tester.tap(find.byTooltip('Zamknij'));
+      await tester.pump();
+      expect(find.textContaining('Odległość'), findsNothing);
+    });
+
+    testWidgets('shows a route length in its details', (tester) async {
+      await pumpMap(
+        tester,
+        width: 1000,
+        height: 800,
+        metersPerPixel: 10,
+        shapes: [
+          testShape('r', ShapeKind.route, const [
+            Offset(0.2, 0.5),
+            Offset(0.8, 0.5),
+          ]),
+        ],
+      );
+      await tapMap(tester, screenOf(tester, const Offset(0.5, 0.5)));
+      await tester.pumpAndSettle();
+      expect(find.text('Długość: 6 km'), findsOneWidget);
     });
   });
 }

@@ -11,6 +11,7 @@ Future<ShapeAction?> showShapeDetails(
   BuildContext context,
   MapShape shape, {
   String? colorName,
+  String? measurement,
 }) => showModalBottomSheet<ShapeAction>(
   context: context,
   showDragHandle: true,
@@ -52,6 +53,20 @@ Future<ShapeAction?> showShapeDetails(
               style: theme.textTheme.labelLarge?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 32, top: 4),
+            child: Text(
+              measurement ??
+                  (isRoute
+                      ? 'Ustaw skalę mapy (menu ⋮), aby widzieć długość.'
+                      : 'Ustaw skalę mapy (menu ⋮), aby widzieć powierzchnię.'),
+              style: measurement == null
+                  ? theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    )
+                  : theme.textTheme.bodyMedium,
             ),
           ),
           if (shape.style.description case final description?) ...[
