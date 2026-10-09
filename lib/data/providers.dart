@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../core/native_tile_renderer.dart';
 import 'database.dart';
@@ -9,6 +10,7 @@ import 'legend.dart';
 import 'legend_repository.dart';
 import 'map_marker.dart';
 import 'map_project.dart';
+import 'map_transfer.dart';
 import 'map_repository.dart';
 import 'marker_repository.dart';
 
@@ -54,4 +56,15 @@ final legendRepositoryProvider = Provider(
 
 final legendProvider = StreamProvider.autoDispose.family<MapLegend, String>(
   (ref, mapId) => ref.watch(legendRepositoryProvider).watchLegend(mapId),
+);
+
+final mapTransferProvider = Provider(
+  (ref) => MapTransfer(
+    maps: ref.watch(mapRepositoryProvider),
+    markers: ref.watch(markerRepositoryProvider),
+    legend: ref.watch(legendRepositoryProvider),
+    workDir: Directory(
+      p.join(ref.watch(documentsDirProvider).path, 'transfer'),
+    ),
+  ),
 );

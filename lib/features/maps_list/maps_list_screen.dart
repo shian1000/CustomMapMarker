@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/image_utils.dart';
+import '../../core/map_archive.dart';
 import '../../core/map_naming.dart';
 import '../../core/plural.dart';
 import '../../data/map_project.dart';
@@ -46,6 +48,102 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
       _showMessage('Import nie powiódł się: $e');
     } finally {
       if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  Future<void> _chooseImport() async {
+    final choice = await showModalBottomSheet<_ImportKind>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('Obraz'),
+              subtitle: const Text('PNG, JPG, WebP – nowa mapa'),
+              onTap: () => Navigator.of(context).pop(_ImportKind.image),
+            ),
+            ListTile(
+              leading: const Icon(Icons.inventory_2_outlined),
+              title: const Text('Plik mapy (.cmm)'),
+              subtitle: const Text('Wyeksportowana mapa ze znacznikami'),
+              onTap: () => Navigator.of(context).pop(_ImportKind.mapFile),
+            ),
+          ],
+        ),
+      ),
+    );
+    switch (choice) {
+      case _ImportKind.image:
+        await _import();
+      case _ImportKind.mapFile:
+        await _importMapFile();
+      case null:
+    }
+  }
+
+  Future<void> _importMapFile() async {
+    setState(() => _importing = true);
+    try {
+      final path = await ref.read(imageFilePickerProvider).pickAnyFile();
+      if (path == null || !mounted) return;
+      final map = await _withProgress(
+        title: 'Importowanie mapy',
+        (onProgress) =>
+            ref.read(mapTransferProvider).import(path, onProgress: onProgress),
+      );
+      if (mounted) _open(map);
+    } on MapArchiveException catch (e) {
+      _showMessage(switch (e.error) {
+        MapArchiveError.notAMapFile => 'To nie jest plik mapy (.cmm).',
+        MapArchiveError.newerVersion =>
+          'Ten plik pochodzi z nowszej wersji aplikacji. Zaktualizuj ją.',
+        MapArchiveError.damaged => 'Plik mapy jest uszkodzony.',
+      });
+    } on UnsupportedImageException {
+      _showMessage('Plik mapy zawiera nieobsługiwany obraz.');
+    } catch (e) {
+      _showMessage('Import nie powiódł się: $e');
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  Future<void> _export(MapProject map) async {
+    try {
+      final navigator = Navigator.of(context);
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 24),
+                Expanded(child: Text('Przygotowywanie pliku…')),
+              ],
+            ),
+          ),
+        ),
+      );
+      final String path;
+      try {
+        path = await ref.read(mapTransferProvider).export(map);
+      } finally {
+        navigator.pop();
+      }
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(path, mimeType: 'application/zip')],
+          title: map.name,
+        ),
+      );
+    } catch (e) {
+      _showMessage('Eksport nie powiódł się: $e');
     }
   }
 
@@ -132,6 +230,7 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
               summary: summary,
               onTap: () => _open(summary.map),
               onRename: () => _rename(summary.map),
+              onExport: () => _export(summary.map),
               onDelete: () => _delete(summary),
               onEnableTiling:
                   ref.read(mapRepositoryProvider).canEnableTiling(summary.map)
@@ -146,7 +245,7 @@ class _MapsListScreenState extends ConsumerState<MapsListScreen> {
         _ => const Center(child: CircularProgressIndicator()),
       },
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _importing ? null : _import,
+        onPressed: _importing ? null : _chooseImport,
         icon: _importing
             ? const SizedBox.square(
                 dimension: 20,
@@ -193,7 +292,9 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-enum _MapMenuAction { rename, enableTiling, delete }
+enum _MapMenuAction { rename, export, enableTiling, delete }
+
+enum _ImportKind { image, mapFile }
 
 class _MapCard extends StatelessWidget {
   const _MapCard({
@@ -201,6 +302,7 @@ class _MapCard extends StatelessWidget {
     required this.summary,
     required this.onTap,
     required this.onRename,
+    required this.onExport,
     required this.onDelete,
     this.onEnableTiling,
   });
@@ -211,6 +313,7 @@ class _MapCard extends StatelessWidget {
   final MapSummary summary;
   final VoidCallback onTap;
   final VoidCallback onRename;
+  final VoidCallback onExport;
   final VoidCallback onDelete;
 
   /// Offered only for large maps imported before tiling existed.
@@ -266,6 +369,7 @@ class _MapCard extends StatelessWidget {
                     tooltip: 'Opcje mapy',
                     onSelected: (action) => switch (action) {
                       _MapMenuAction.rename => onRename(),
+                      _MapMenuAction.export => onExport(),
                       _MapMenuAction.enableTiling => onEnableTiling?.call(),
                       _MapMenuAction.delete => onDelete(),
                     },
@@ -275,6 +379,13 @@ class _MapCard extends StatelessWidget {
                         child: ListTile(
                           leading: Icon(Icons.edit_outlined),
                           title: Text('Zmień nazwę'),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: _MapMenuAction.export,
+                        child: ListTile(
+                          leading: Icon(Icons.ios_share),
+                          title: Text('Eksportuj'),
                         ),
                       ),
                       if (onEnableTiling != null)

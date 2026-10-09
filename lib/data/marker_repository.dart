@@ -58,6 +58,10 @@ class MarkerRepository {
   Future<void> remove(String id) =>
       (_db.delete(_db.markers)..where((m) => m.id.equals(id))).go();
 
+  /// Saves many [markers] as they are, in one batch (e.g. an imported map).
+  Future<void> insertAll(Iterable<MapMarker> markers) =>
+      _db.batch((batch) => batch.insertAll(_db.markers, markers.map(_toRow)));
+
   /// Saves [marker] as is, e.g. to undo its removal.
   Future<void> restore(MapMarker marker) =>
       _db.into(_db.markers).insert(_toRow(marker));

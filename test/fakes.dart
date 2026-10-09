@@ -100,12 +100,16 @@ class FakeMapRepository implements MapRepository {
 }
 
 class FakeImageFilePicker implements ImageFilePicker {
-  FakeImageFilePicker(this.result);
+  FakeImageFilePicker(this.result, {this.anyFile});
 
   final PickedImage? result;
+  final String? anyFile;
 
   @override
   Future<PickedImage?> pick() async => result;
+
+  @override
+  Future<String?> pickAnyFile() async => anyFile;
 }
 
 /// Records whole-pyramid requests instead of calling the platform.

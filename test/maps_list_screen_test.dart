@@ -4,6 +4,8 @@ import 'package:custom_map_marker/data/providers.dart';
 import 'package:custom_map_marker/features/maps_list/maps_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:custom_map_marker/core/map_archive.dart';
+import 'package:custom_map_marker/data/map_transfer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fakes.dart';
@@ -15,6 +17,7 @@ MapSummary _summary(String id, String name, int markers) => MapSummary(
 
 void main() {
   late FakeMapRepository repo;
+  MapArchiveException? transferError;
 
   setUp(() => repo = FakeMapRepository());
 
@@ -22,6 +25,7 @@ void main() {
     WidgetTester tester,
     List<MapSummary> maps, {
     PickedImage? picked,
+    String? anyFile,
   }) => tester
       .pumpWidget(
         ProviderScope(
@@ -29,7 +33,10 @@ void main() {
             mapsProvider.overrideWith((ref) => Stream.value(maps)),
             mapRepositoryProvider.overrideWithValue(repo),
             imageFilePickerProvider.overrideWithValue(
-              FakeImageFilePicker(picked),
+              FakeImageFilePicker(picked, anyFile: anyFile),
+            ),
+            mapTransferProvider.overrideWithValue(
+              _FailingTransfer(() => transferError),
             ),
             // Import opens the map screen, which watches markers.
             markersProvider.overrideWith((ref, id) => Stream.value(const [])),
@@ -127,6 +134,8 @@ void main() {
       );
       await tester.tap(find.text('Importuj mapę'));
       await _settle(tester);
+      await tester.tap(find.text('Obraz'));
+      await _settle(tester);
 
       expect(find.text('Nowa mapa'), findsOneWidget);
       final field = tester.widget<TextFormField>(find.byType(TextFormField));
@@ -147,6 +156,8 @@ void main() {
         picked: (path: '/cache/x.jpg', name: 'Swiat_Wiedzmina.jpg'),
       );
       await tester.tap(find.text('Importuj mapę'));
+      await _settle(tester);
+      await tester.tap(find.text('Obraz'));
       await _settle(tester);
       final field = tester.widget<TextFormField>(find.byType(TextFormField));
       expect(field.controller!.text, 'Swiat_Wiedzmina');
@@ -181,6 +192,35 @@ void main() {
       expect(find.text('Popraw jakość (kafelki)'), findsNothing);
     });
   });
+
+  testWidgets('offers export in the map menu', (tester) async {
+    await pumpList(tester, [_summary('a', 'Temeria', 0)]);
+    await tester.tap(find.byTooltip('Opcje mapy'));
+    await tester.pumpAndSettle();
+    expect(find.text('Eksportuj'), findsOneWidget);
+  });
+
+  testWidgets('explains why a map file cannot be imported', (tester) async {
+    await pumpList(tester, const [], anyFile: '/x.cmm');
+    for (final (error, message) in [
+      (MapArchiveError.notAMapFile, 'To nie jest plik mapy (.cmm).'),
+      (
+        MapArchiveError.newerVersion,
+        'Ten plik pochodzi z nowszej wersji aplikacji. Zaktualizuj ją.',
+      ),
+      (MapArchiveError.damaged, 'Plik mapy jest uszkodzony.'),
+    ]) {
+      transferError = MapArchiveException(error);
+      await tester.tap(find.text('Importuj mapę'));
+      await _settle(tester);
+      await tester.tap(find.text('Plik mapy (.cmm)'));
+      await _settle(tester);
+      expect(find.text(message), findsOneWidget);
+      ScaffoldMessenger.of(tester.element(find.byType(MapsListScreen)))
+          .removeCurrentSnackBar();
+      await _settle(tester);
+    }
+  });
 }
 
 /// Like pumpAndSettle, but tolerates the import button's endless spinner.
@@ -188,4 +228,19 @@ Future<void> _settle(WidgetTester tester) async {
   for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+}
+
+class _FailingTransfer implements MapTransfer {
+  _FailingTransfer(this.error);
+
+  final MapArchiveException? Function() error;
+
+  @override
+  Future<MapProject> import(
+    String path, {
+    void Function(double progress)? onProgress,
+  }) async => throw error()!;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
